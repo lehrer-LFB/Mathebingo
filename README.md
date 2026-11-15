@@ -63,7 +63,7 @@ Sie erzeugt die Rechnungen mit demselben Algorithmus, auf Wunsch per Timer, und 
 
 ## Lizenz
 
-© lehrer-LFB – **Mathebingo** steht unter der Lizenz
+© 2026 Daniel von Laufenberg – **Mathebingo** steht unter der Lizenz
 [Creative Commons Namensnennung – Nicht kommerziell – Weitergabe unter gleichen Bedingungen 4.0 International (CC BY-NC-SA 4.0)](https://creativecommons.org/licenses/by-nc-sa/4.0/deed.de).
 Der vollständige Lizenztext steht in [`LICENSE`](LICENSE).
 
