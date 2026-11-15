@@ -1,0 +1,62 @@
+# Mathebingo
+
+Bingo mit Rechenaufgaben für die Klasse. Jede „Kugel“ ist eine Rechnung wie **7 × 45 − 280**. Wer das Ergebnis auf seiner Karte findet, markiert es. Wer zuerst eine volle Reihe hat, ruft **BINGO!**
+
+Es gibt zwei Versionen:
+- die **WebApp** (`index.html`) für GitHub Pages, mit Mehrspieler-Modus über Handy, Tablet oder Laptop
+- das ursprüngliche **Desktop-Programm** (`mathe_bingo_gui.py`, Python/Tkinter)
+
+## Spielregeln (WebApp)
+
+1. Der **Spielleiter** öffnet die Seite und wählt „Spiel leiten“. Er bekommt einen Raumcode und einen QR-Code (ideal für den Beamer).
+2. Die **Spieler** scannen den QR-Code oder geben den Code unter „Mitspielen“ ein und wählen einen **Spitznamen**.
+3. Jeder trägt **24 verschiedene Glückszahlen von 1 bis 100** in seine leere 5×5-Karte ein. Die Mitte ist ein **Freifeld**. Wer mag, lässt den Rest zufällig auffüllen.
+4. Der Spielleiter stellt den **Abstand zwischen zwei Kugeln (10–120 s)** ein und startet die Runde. Die Rechnung erscheint groß am Beamer und auf jedem Spielergerät.
+5. Die Spieler rechnen und tippen passende Felder auf ihrer Karte an.
+6. Bei einer vollen **Zeile, Spalte oder Diagonale** drückt man **BINGO!** Die App prüft automatisch, ob alle markierten Zahlen wirklich gezogen wurden. Der Spielleiter sieht jede Meldung mit Spitznamen. Es kann mehrere Gewinner geben (Platz 1, 2, …).
+7. Am **Rundenende** sehen alle die Liste der Rechnungen mit Lösungen. Auf der eigenen Karte wird markiert, was richtig, falsch oder übersehen war.
+
+Der Spielleiter kann jederzeit pausieren, sofort die nächste Kugel ziehen und den Abstand ändern. Rechts gibt es ein einklappbares 1–100-Kontrollraster, das nur für ihn gedacht ist.
+
+### So entstehen die Rechnungen
+a ist eine Zahl von 1 bis 10, b eine von 1 bis 100.
+- Ist a·b kleiner als 100: **a × b + e**
+- Sonst: **a × b − e**
+
+e ist dabei so gewählt, dass das Ergebnis zwischen 1 und 100 liegt. Jedes Ergebnis kommt pro Runde nur einmal vor. Nach 100 Kugeln sind alle Zahlen gezogen.
+
+## Technik
+
+- Rein statische Seite: HTML, CSS und JavaScript-Module, kein Build-Schritt.
+- Die Geräte verbinden sich direkt über WebRTC mit [PeerJS](https://peerjs.com). Der öffentliche PeerJS-Server vermittelt nur den Verbindungsaufbau, ein Konto ist nicht nötig. Das Gerät des Spielleiters ist der „Server“ und muss während des Spiels **geöffnet bleiben**.
+- Lädt ein Spieler die Seite neu oder verliert kurz die Verbindung, kommt er automatisch mit Karte und Markierungen zurück. Dasselbe gilt für den Spielleiter: Das Spiel wird pausiert fortgesetzt.
+- Wer erst während der Runde seine Karte abgibt, für den zählen nur die Kugeln ab diesem Moment.
+
+| Datei | Inhalt |
+|---|---|
+| `index.html`, `css/style.css` | Oberfläche |
+| `js/game.js` | Spiellogik (Aufgaben, Kartenprüfung, Bingo-Prüfung) |
+| `js/host.js` / `js/player.js` | Spielleiter- und Spieleransicht |
+| `js/net.js` | Verbindungsaufbau über PeerJS |
+| `test/game.test.mjs` | Tests der Spiellogik (`npm test`, benötigt Node ≥ 20) |
+
+### Lokal ausprobieren
+```bash
+python3 -m http.server 8000
+# Spielleiter: http://localhost:8000/#host
+# Spieler (anderes Fenster/Gerät im selben Netz): http://<IP-des-Rechners>:8000/#join
+```
+
+### Auf GitHub Pages veröffentlichen
+1. Repository auf GitHub anlegen und den Code hochladen (Branch `main`).
+2. Unter **Settings → Pages** als Quelle „Deploy from a branch“, Branch `main`, Ordner `/ (root)` wählen.
+3. Nach etwa einer Minute läuft das Spiel unter `https://<benutzername>.github.io/<repo>/`.
+
+**Hinweis für Schulnetze:** WebRTC wird von manchen Firewalls eingeschränkt. Kommt keine Verbindung zustande, hilft oft ein anderes Netz, zum Beispiel ein Hotspot. Bleibt das Problem, ließe sich die Verbindung auf einen Dienst wie Firebase umstellen.
+
+## Desktop-Version (alt)
+
+```bash
+python mathe_bingo_gui.py
+```
+Sie erzeugt die Rechnungen mit demselben Algorithmus, auf Wunsch per Timer, und zeigt die gezogenen Ergebnisse in einem 10×10-Raster. `alpha 0.1` und `Rechnungsgenerator.py` sind frühe Versionen des Aufgabenkerns.

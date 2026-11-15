@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Mathebingo</title>
+  <meta name="description" content="Mathebingo für die Klasse: Rechnungen lösen, Ergebnis auf der eigenen Bingokarte finden, BINGO rufen.">
+  <meta name="theme-color" content="#3b5bdb">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='46' fill='%233b5bdb'/%3E%3Ctext x='50' y='66' font-size='46' text-anchor='middle' fill='white' font-family='Arial' font-weight='bold'%3E%C3%97%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+  <script type="module" src="js/main.js"></script>
+</head>
+<body>
+  <div id="libfail" class="libfail" hidden>
+    Die Spielbibliothek konnte nicht geladen werden. Bitte prüfe die Internetverbindung
+    (oder ob ein Inhaltsfilter <code>unpkg.com</code> blockiert) und lade die Seite neu.
+  </div>
+
+  <!-- ================= Startseite ================= -->
+  <section id="view-home" class="view home" hidden>
+    <div class="hero">
+      <h1 class="logo">Mathe<span>bingo</span></h1>
+      <p class="lead">Rechnen, suchen, markieren – wer zuerst eine volle Reihe hat, ruft <strong>BINGO!</strong></p>
+      <div class="choices">
+        <a class="choice" href="#join">
+          <span class="ic" aria-hidden="true">🙋</span>
+          <strong>Mitspielen</strong>
+          <small>Raumcode eingeben, Spitzname wählen, Glückszahlen eintragen</small>
+        </a>
+        <a class="choice" href="#host">
+          <span class="ic" aria-hidden="true">🎓</span>
+          <strong>Spiel leiten</strong>
+          <small>Raum öffnen, Tempo einstellen, Kugeln ziehen – ideal für den Beamer</small>
+        </a>
+      </div>
+      <details class="panel rules">
+        <summary>Spielregeln</summary>
+        <ol>
+          <li>Jede Spielerin und jeder Spieler trägt <strong>24 verschiedene Glückszahlen von 1 bis 100</strong> in die 5×5-Karte ein. Die Mitte ist ein Freifeld.</li>
+          <li>Der Spielleiter startet die Runde. In festen Abständen erscheint eine neue „Kugel“: eine Rechnung wie <em>7 × 45 − 280</em>.</li>
+          <li>Rechne das Ergebnis aus. Steht es auf deiner Karte, tippe das Feld an.</li>
+          <li>Jedes Ergebnis kommt pro Runde nur einmal vor. Die Lösungen werden erst am Ende verraten.</li>
+          <li>Hast du eine volle <strong>Zeile, Spalte oder Diagonale</strong>, drücke <strong>BINGO!</strong> Die App prüft, ob alle markierten Zahlen wirklich gezogen wurden.</li>
+        </ol>
+      </details>
+    </div>
+  </section>
+
+  <!-- ================= Spielleiter ================= -->
+  <section id="view-host" class="view" hidden>
+    <header class="topbar">
+      <a class="logo small" href="./">Mathe<span>bingo</span></a>
+      <div class="topinfo">Raum <strong id="h-code-small">——</strong> <span id="h-status" class="status warn">verbinde …</span></div>
+      <div class="topactions">
+        <label class="toggle"><input type="checkbox" id="h-sound" checked> Ton</label>
+        <button id="h-newgame" class="btn ghost small" type="button">Neues Spiel</button>
+      </div>
+    </header>
+    <main class="host">
+      <section id="h-lobby" hidden>
+        <div class="lobby-grid">
+          <div class="panel joinbox">
+            <p class="eyebrow">Mitspielen auf</p>
+            <p class="url" id="h-url"></p>
+            <div id="h-qr" class="qr" aria-label="QR-Code zum Beitreten"></div>
+            <p class="eyebrow">Raumcode</p>
+            <p class="code" id="h-code"></p>
+            <button id="h-copy" class="btn ghost small" type="button">Link kopieren</button>
+          </div>
+          <div class="panel">
+            <h2>Spieler <span class="count" id="h-pcount">0</span></h2>
+            <ul id="h-players-lobby" class="plist"></ul>
+            <p class="muted" id="h-lobby-hint"></p>
+            <div class="field">
+              <label for="h-interval">Zeit bis zur nächsten Kugel: <strong class="h-interval-val">30 s</strong></label>
+              <input type="range" id="h-interval" class="h-interval" min="10" max="120" step="5" value="30">
+            </div>
+            <button id="h-start" class="btn primary big" type="button">Runde starten</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="h-game" hidden>
+        <div class="game-grid">
+          <div class="panel stage">
+            <p class="eyebrow" id="h-ballnr"></p>
+            <div class="task-big" id="h-task" aria-live="polite"></div>
+            <div class="ring-wrap">
+              <svg viewBox="0 0 120 120" class="ring" aria-hidden="true">
+                <circle class="ring-bg" cx="60" cy="60" r="54"></circle>
+                <circle class="ring-fg" id="h-ring" cx="60" cy="60" r="54"></circle>
+              </svg>
+              <div class="ring-text" id="h-count"></div>
+            </div>
+            <div class="controls">
+              <button id="h-pause" class="btn" type="button">⏸ Pause</button>
+              <button id="h-next" class="btn" type="button">Nächste Kugel jetzt</button>
+              <button id="h-endbtn" class="btn danger" type="button">Runde beenden</button>
+            </div>
+            <div class="field inline">
+              <label for="h-interval2">Abstand: <strong class="h-interval-val">30 s</strong></label>
+              <input type="range" id="h-interval2" class="h-interval" min="10" max="120" step="5" value="30">
+            </div>
+          </div>
+          <aside class="side">
+            <div class="panel">
+              <h2>Bingo-Meldungen</h2>
+              <ul id="h-claims" class="claims"></ul>
+            </div>
+            <div class="panel">
+              <h2>Spieler <span class="count" id="h-pcount2"></span></h2>
+              <ul id="h-players-game" class="plist"></ul>
+            </div>
+            <details class="panel">
+              <summary>Kontrollraster 1–100 (nur für dich)</summary>
+              <div id="h-board" class="board"></div>
+            </details>
+          </aside>
+        </div>
+        <div id="h-banner" class="banner" hidden></div>
+      </section>
+
+      <section id="h-end" hidden>
+        <div class="end-grid">
+          <div class="panel">
+            <h2>Runde beendet – Gewinner</h2>
+            <ol id="h-winners" class="winners"></ol>
+            <button id="h-newround" class="btn primary big" type="button">Neue Runde</button>
+            <p class="muted small">Die Spieler bleiben im Raum und füllen eine neue Karte aus.</p>
+          </div>
+          <div class="panel">
+            <h2>Alle Rechnungen mit Lösung</h2>
+            <ol id="h-solutions" class="solutions"></ol>
+          </div>
+        </div>
+      </section>
+    </main>
+  </section>
+
+  <!-- ================= Spieler ================= -->
+  <section id="view-player" class="view" hidden>
+    <header class="topbar">
+      <a class="logo small" href="./">Mathe<span>bingo</span></a>
+      <div class="topinfo"><span id="p-who"></span> <span id="p-status" class="status"></span></div>
+    </header>
+    <main class="player">
+      <section id="p-join" class="panel narrow">
+        <h1>Spiel beitreten</h1>
+        <form id="p-joinform" novalidate>
+          <div class="field">
+            <label for="p-room">Raumcode</label>
+            <input id="p-room" class="codeinput" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="6" placeholder="z. B. K7QF2M">
+          </div>
+          <div class="field">
+            <label for="p-nickname">Dein Spitzname</label>
+            <input id="p-nickname" maxlength="20" autocomplete="nickname" placeholder="z. B. Rechenkönig">
+          </div>
+          <button class="btn primary big" type="submit" id="p-joinbtn">Beitreten</button>
+          <p id="p-joinmsg" class="msg" aria-live="polite"></p>
+        </form>
+      </section>
+
+      <section id="p-card" hidden>
+        <h1>Deine Glückszahlen</h1>
+        <p class="muted">Trage 24 verschiedene Zahlen von 1 bis 100 ein. Die Mitte ist ein Freifeld.</p>
+        <p id="p-late" class="msg warn" hidden>Die Runde läuft schon. Für dich zählen nur die Kugeln, die nach dem Abgeben deiner Karte gezogen werden.</p>
+        <div id="p-editor" class="card-grid editor"></div>
+        <p id="p-cardmsg" class="msg" aria-live="polite"></p>
+        <div class="row">
+          <button id="p-fill" class="btn" type="button">Rest zufällig auffüllen</button>
+          <button id="p-clear" class="btn ghost" type="button">Leeren</button>
+        </div>
+        <button id="p-ready" class="btn primary big" type="button" disabled>Karte fertig</button>
+      </section>
+
+      <section id="p-game" hidden>
+        <div class="panel taskbox" id="p-taskbox">
+          <p class="eyebrow" id="p-ballnr"></p>
+          <div class="task-mid" id="p-task" aria-live="polite"></div>
+          <div class="bar"><div id="p-bar"></div></div>
+          <p class="muted small" id="p-count"></p>
+        </div>
+        <div id="p-grid" class="card-grid play"></div>
+        <button id="p-bingo" class="btn bingo big" type="button" disabled>BINGO!</button>
+        <details class="panel">
+          <summary>Bisherige Rechnungen (<span id="p-histcount">0</span>)</summary>
+          <ol id="p-history" class="history" reversed></ol>
+        </details>
+      </section>
+
+      <section id="p-end" hidden>
+        <h1>Runde beendet</h1>
+        <div class="panel">
+          <h2>Gewinner</h2>
+          <ol id="p-winners" class="winners"></ol>
+        </div>
+        <div id="p-endgrid" class="card-grid result"></div>
+        <p id="p-legend" class="legend">
+          <span class="lg right">richtig markiert</span>
+          <span class="lg wrong">markiert, aber nicht gezogen</span>
+          <span class="lg missed">gezogen, aber übersehen</span>
+        </p>
+        <div class="panel">
+          <h2>Lösungen</h2>
+          <ol id="p-solutions" class="solutions"></ol>
+        </div>
+        <p class="muted">Warte, bis der Spielleiter eine neue Runde startet.</p>
+      </section>
+    </main>
+  </section>
+
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+</body>
+</html>

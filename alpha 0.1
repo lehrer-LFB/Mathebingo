@@ -1,0 +1,31 @@
+# Kern des Mathe Bingo Spiels
+
+# import random module
+import random
+
+# initialize random
+random.seed()
+
+# zufallszahlen 
+a = random.randint(1,10)
+b = random.randint(1,100)
+
+z = a*b
+
+if z < 100:  
+    d = 100-z
+    e = random.randint(1, d)
+    x = a*b+e
+elif z >= 100:
+    d = z-100
+    e = random.randint(d, (z-1))
+    x = a*b-e
+    
+    
+
+# print random value
+print(a)
+print(b)
+#print(c)
+print(d)
+print(x)
