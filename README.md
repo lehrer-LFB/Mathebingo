@@ -60,3 +60,16 @@ python3 -m http.server 8000
 python mathe_bingo_gui.py
 ```
 Sie erzeugt die Rechnungen mit demselben Algorithmus, auf Wunsch per Timer, und zeigt die gezogenen Ergebnisse in einem 10×10-Raster. `alpha 0.1` und `Rechnungsgenerator.py` sind frühe Versionen des Aufgabenkerns.
+
+## Lizenz
+
+© lehrer-LFB – **Mathebingo** steht unter der Lizenz
+[Creative Commons Namensnennung – Nicht kommerziell – Weitergabe unter gleichen Bedingungen 4.0 International (CC BY-NC-SA 4.0)](https://creativecommons.org/licenses/by-nc-sa/4.0/deed.de).
+Der vollständige Lizenztext steht in [`LICENSE`](LICENSE).
+
+- ✅ **Erlaubt:** Schulen, Lehrkräfte, Hochschulen und andere Bildungseinrichtungen dürfen das Spiel frei nutzen, kopieren, weitergeben und anpassen, auch im Unterricht und auf eigenen Servern.
+- 📝 **Bedingungen:** Den Urheber und die Lizenz nennen. Veränderte Versionen müssen unter derselben Lizenz weitergegeben werden.
+- 🚫 **Nicht erlaubt:** jede kommerzielle Nutzung, zum Beispiel Verkauf, Einbau in kostenpflichtige Produkte oder Plattformen oder Nutzung durch gewinnorientierte Anbieter. Wer das möchte, braucht eine gesonderte Erlaubnis des Urhebers.
+
+Eingebundene Bibliotheken von Drittanbietern behalten ihre eigenen Lizenzen. Sie werden zur Laufzeit von einem CDN geladen:
+[PeerJS](https://github.com/peers/peerjs) (MIT) und [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) (MIT).
