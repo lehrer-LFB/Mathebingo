@@ -10,20 +10,40 @@ Es gibt zwei Versionen:
 
 1. Der **Spielleiter** öffnet die Seite und wählt „Spiel leiten“. Er bekommt einen Raumcode und einen QR-Code (ideal für den Beamer).
 2. Die **Spieler** scannen den QR-Code oder geben den Code unter „Mitspielen“ ein und wählen einen **Spitznamen**.
-3. Jeder trägt **24 verschiedene Glückszahlen von 1 bis 100** in seine leere 5×5-Karte ein. Die Mitte ist ein **Freifeld**. Wer mag, lässt den Rest zufällig auffüllen.
-4. Der Spielleiter stellt den **Abstand zwischen zwei Kugeln (10–120 s)** ein und startet die Runde. Die Rechnung erscheint groß am Beamer und auf jedem Spielergerät.
-5. Die Spieler rechnen und tippen passende Felder auf ihrer Karte an.
-6. Bei einer vollen **Zeile, Spalte oder Diagonale** drückt man **BINGO!** Die App prüft automatisch, ob alle markierten Zahlen wirklich gezogen wurden. Der Spielleiter sieht jede Meldung mit Spitznamen. Es kann mehrere Gewinner geben (Platz 1, 2, …).
-7. Am **Rundenende** sehen alle die Liste der Rechnungen mit Lösungen. Auf der eigenen Karte wird markiert, was richtig, falsch oder übersehen war.
+3. Der Spielleiter wählt in der Lobby den **Aufgabentyp** (siehe unten).
+4. Jeder trägt **eigene Glückszahlen** in seine leere Karte ein: 24 Zahlen auf der 5×5-Karte mit **Freifeld** in der Mitte, bei „bis 20“ nur 9 Zahlen auf einer 3×3-Karte. Wer mag, lässt den Rest zufällig auffüllen.
+5. Der Spielleiter stellt den **Abstand zwischen zwei Kugeln (10–120 s)** ein und startet die Runde. Die Rechnung erscheint groß am Beamer und auf jedem Spielergerät.
+6. Die Spieler rechnen und tippen passende Felder auf ihrer Karte an.
+7. Bei einer vollen **Zeile, Spalte oder Diagonale** drückt man **BINGO!** Die App prüft automatisch, ob alle markierten Zahlen wirklich gezogen wurden. Der Spielleiter sieht jede Meldung mit Spitznamen. Es kann mehrere Gewinner geben (Platz 1, 2, …).
+8. Am **Rundenende** sehen alle die Liste der Rechnungen mit Lösungen. Auf der eigenen Karte wird markiert, was richtig, falsch oder übersehen war.
 
-Der Spielleiter kann jederzeit pausieren, sofort die nächste Kugel ziehen und den Abstand ändern. Rechts gibt es ein einklappbares 1–100-Kontrollraster, das nur für ihn gedacht ist.
+Der Spielleiter kann jederzeit pausieren, sofort die nächste Kugel ziehen und den Abstand ändern. Rechts gibt es ein einklappbares Kontrollraster aller Zahlen, das nur für ihn gedacht ist.
+
+### Aufgabentypen
+
+Der Spielleiter wählt den Typ vor jeder Runde. Ändert er ihn, nachdem schon Karten abgegeben wurden, müssen alle ihre Karte neu ausfüllen.
+
+| Typ | Beispiel | Zahlen auf der Karte | Karte |
+|---|---|---|---|
+| Mal · Kleines Einmaleins (a, b von 1 bis 10) | 7 × 8 + 12 | 1–100 | 5×5 mit Freifeld |
+| Mal · Mittel (a von 1 bis 10, b von 1 bis 100) | 7 × 45 − 280 | 1–100 | 5×5 mit Freifeld |
+| Mal · Schwer (a, b von 1 bis 100) | 23 × 58 − 1297 | 1–100 | 5×5 mit Freifeld |
+| Plus bis 20 | 9 + 6 | 2–20 | 3×3 ohne Freifeld |
+| Plus/Minus bis 20 | 13 − 5 | 1–20 | 3×3 ohne Freifeld |
+| Plus bis 100 | 47 + 25 | 2–100 | 5×5 mit Freifeld |
+| Plus/Minus bis 100 | 72 − 38 | 1–100 | 5×5 mit Freifeld |
+
+Jedes Ergebnis kommt pro Runde nur einmal vor. Sind alle möglichen Ergebnisse gezogen, ist die Runde vorbei.
 
 ### So entstehen die Rechnungen
-a ist eine Zahl von 1 bis 10, b eine von 1 bis 100.
-- Ist a·b kleiner als 100: **a × b + e**
-- Sonst: **a × b − e**
+Zuerst wird zufällig ein Ergebnis gewählt, das in dieser Runde noch nicht vorkam. Dann wird eine passende Rechnung gebaut:
 
-e ist dabei so gewählt, dass das Ergebnis zwischen 1 und 100 liegt. Jedes Ergebnis kommt pro Runde nur einmal vor. Nach 100 Kugeln sind alle Zahlen gezogen.
+- **Mal-Aufgaben:** a und b werden im Bereich der Stufe gewürfelt.
+  - Ist a·b kleiner als 100, lautet die Rechnung **a × b + e**.
+  - Sonst lautet sie **a × b − e**.
+  - e wird so ausgerechnet, dass genau das Ergebnis herauskommt. Es muss dieselben Grenzen einhalten wie im ursprünglichen Python-Programm. Passt es nicht, werden a und b neu gewürfelt.
+- **Plus-Aufgaben:** Ein Summand wird zufällig gewählt, der andere ergibt sich, z. B. 9 + 6 = 15.
+- **Minus-Aufgaben:** Die erste Zahl wird zwischen Ergebnis und Zahlenraumgrenze gewählt, z. B. 13 − 5 = 8. Ist Minus erlaubt, kommen Plus und Minus etwa gleich oft vor. Keine Zahl der Rechnung ist größer als der Zahlenraum.
 
 ## Technik
 

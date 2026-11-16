@@ -200,7 +200,9 @@ details.panel[open] > summary { margin-bottom: .6rem; }
 .player { padding: 16px; max-width: 520px; margin: 0 auto; }
 .narrow { max-width: 440px; margin: 0 auto; }
 
-.card-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; margin: 12px 0; }
+.card-grid { display: grid; grid-template-columns: repeat(var(--size, 5), minmax(0, 1fr)); gap: 6px; margin: 12px auto; }
+.card-grid.s3 { gap: 10px; max-width: 380px; }
+.card-grid.s3 .cell { font-size: clamp(1.8rem, 11vw, 2.8rem); border-radius: 16px; }
 .card-grid .cell {
   aspect-ratio: 1; width: 100%; min-width: 0; display: grid; place-items: center; text-align: center;
   font: inherit; font-size: clamp(1.1rem, 6vw, 1.7rem); font-weight: 700; font-variant-numeric: tabular-nums;
@@ -256,3 +258,19 @@ details.panel[open] > summary { margin-bottom: .6rem; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 
 .license { margin-top: 20px; }
+
+/* ---------- Aufgaben-Auswahl (Spielleiter) ---------- */
+.tasks { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px 4px; margin: 14px 0 4px; }
+.tasks legend { font-weight: 600; padding: 0 6px; }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+.seg label { flex: 1 1 auto; position: relative; cursor: pointer; }
+.seg input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.seg span {
+  display: block; text-align: center; padding: .45rem .7rem; border-radius: 10px; font-weight: 600; font-size: .92rem;
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
+}
+.seg input:checked + span { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.seg input:focus-visible + span { outline: 3px solid var(--accent-2); outline-offset: 2px; }
+.check { display: flex; gap: .5rem; align-items: center; font-weight: 600; margin: 2px 0 8px; cursor: pointer; }
+.check input { width: 1.1rem; height: 1.1rem; accent-color: var(--accent); }
+#h-rules-info { margin: 4px 0 8px; }

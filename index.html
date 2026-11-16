@@ -38,8 +38,9 @@
       <details class="panel rules">
         <summary>Spielregeln</summary>
         <ol>
-          <li>Jede Spielerin und jeder Spieler trägt <strong>24 verschiedene Glückszahlen von 1 bis 100</strong> in die 5×5-Karte ein. Die Mitte ist ein Freifeld.</li>
-          <li>Der Spielleiter startet die Runde. In festen Abständen erscheint eine neue „Kugel“: eine Rechnung wie <em>7 × 45 − 280</em>.</li>
+          <li>Der Spielleiter wählt die Aufgaben: <strong>Mal-Aufgaben</strong> wie <em>7 × 45 − 280</em> (Kleines Einmaleins, Mittel oder Schwer) oder <strong>Plus-Aufgaben</strong> bis 20 bzw. bis 100, auf Wunsch auch mit Minus.</li>
+          <li>Jede Spielerin und jeder Spieler trägt <strong>eigene Glückszahlen</strong> in die leere Karte ein: 24 Zahlen auf der 5×5-Karte mit Freifeld in der Mitte, bei „bis 20“ nur 9 Zahlen auf einer 3×3-Karte.</li>
+          <li>Der Spielleiter startet die Runde. In festen Abständen erscheint eine neue „Kugel“, also eine Rechnung.</li>
           <li>Rechne das Ergebnis aus. Steht es auf deiner Karte, tippe das Feld an.</li>
           <li>Jedes Ergebnis kommt pro Runde nur einmal vor. Die Lösungen werden erst am Ende verraten.</li>
           <li>Hast du eine volle <strong>Zeile, Spalte oder Diagonale</strong>, drücke <strong>BINGO!</strong> Die App prüft, ob alle markierten Zahlen wirklich gezogen wurden.</li>
@@ -79,6 +80,26 @@
             <h2>Spieler <span class="count" id="h-pcount">0</span></h2>
             <ul id="h-players-lobby" class="plist"></ul>
             <p class="muted" id="h-lobby-hint"></p>
+            <fieldset class="tasks" id="h-tasks">
+              <legend>Aufgaben</legend>
+              <div class="seg" role="radiogroup" aria-label="Aufgabentyp">
+                <label><input type="radio" name="h-mode" value="mul"><span>Mal-Aufgaben</span></label>
+                <label><input type="radio" name="h-mode" value="add"><span>Plus-Aufgaben</span></label>
+              </div>
+              <div id="h-mul-opts" class="seg" role="radiogroup" aria-label="Stufe">
+                <label><input type="radio" name="h-level" value="easy"><span>Kleines Einmaleins</span></label>
+                <label><input type="radio" name="h-level" value="mid"><span>Mittel</span></label>
+                <label><input type="radio" name="h-level" value="hard"><span>Schwer</span></label>
+              </div>
+              <div id="h-add-opts">
+                <div class="seg" role="radiogroup" aria-label="Zahlenraum">
+                  <label><input type="radio" name="h-range" value="20"><span>bis 20</span></label>
+                  <label><input type="radio" name="h-range" value="100"><span>bis 100</span></label>
+                </div>
+                <label class="check"><input type="checkbox" id="h-sub"> auch Minus-Aufgaben</label>
+              </div>
+              <p class="muted small" id="h-rules-info"></p>
+            </fieldset>
             <div class="field">
               <label for="h-interval">Zeit bis zur nächsten Kugel: <strong class="h-interval-val">30 s</strong></label>
               <input type="range" id="h-interval" class="h-interval" min="10" max="120" step="5" value="30">
@@ -170,7 +191,7 @@
 
       <section id="p-card" hidden>
         <h1>Deine Glückszahlen</h1>
-        <p class="muted">Trage 24 verschiedene Zahlen von 1 bis 100 ein. Die Mitte ist ein Freifeld.</p>
+        <p class="muted" id="p-cardhint">Trage 24 verschiedene Zahlen von 1 bis 100 ein. Die Mitte ist ein Freifeld.</p>
         <p id="p-late" class="msg warn" hidden>Die Runde läuft schon. Für dich zählen nur die Kugeln, die nach dem Abgeben deiner Karte gezogen werden.</p>
         <div id="p-editor" class="card-grid editor"></div>
         <p id="p-cardmsg" class="msg" aria-live="polite"></p>

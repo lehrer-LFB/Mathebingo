@@ -1,12 +1,13 @@
 // Spieler: Spitzname, eigene Karte, markieren, BINGO melden.
-import { FREE, CELLS, validateCard, randomFill, markedLines } from './game.js';
+import { validateCard, randomFill, markedLines, rulesFor } from './game.js';
 import { PlayerNet, peerId } from './net.js';
 import { $, el, toast, store, randomId, keepAwake, cleanNick, cleanCode } from './ui.js';
 
 const STORE = 'mb_player_v1';
-const emptyCard = () => Array(CELLS).fill(null);
+let R = rulesFor(null); // Regeln der Runde (vom Spielleiter)
+const emptyCard = () => Array(R.cells).fill(null);
 
-let P; // gespeichert: playerId, room, nick, round, card, draft, marked, autoJoin
+let P; // gespeichert: playerId, room, nick, round, settings, card, draft, marked, autoJoin
 const G = { joined: false, connected: false, phase: 'lobby', balls: [], interval: 30, nextAt: 0, remaining: 0, cardAt: 0, end: null, sending: false };
 let net = null;
 let lastBingo = 0;
@@ -18,8 +19,9 @@ const playing = () => G.phase === 'running' || G.phase === 'paused';
 export function startPlayer(roomFromHash) {
   P = store.get(STORE) || {};
   P.playerId ||= randomId();
+  R = rulesFor(P.settings);
   if (roomFromHash && P.room !== roomFromHash) { P.room = roomFromHash; P.round = null; P.autoJoin = false; resetRound(); }
-  if (!Array.isArray(P.draft) || P.draft.length !== CELLS) P.draft = emptyCard();
+  if (!Array.isArray(P.draft) || P.draft.length !== R.cells) P.draft = emptyCard();
   if (!Array.isArray(P.marked)) P.marked = [];
   save();
   bindUI();
@@ -66,6 +68,7 @@ function onMsg(m) {
     case 'welcome': {
       G.joined = true;
       P.nick = m.nick;
+      setRules(m.settings);
       P.autoJoin = true;
       if (P.round !== m.round) { resetRound(); P.round = m.round; }
       if (m.card) P.card = m.card;
@@ -112,6 +115,12 @@ function onMsg(m) {
     case 'end':
       G.phase = 'ended'; G.end = { balls: m.balls, winners: m.winners };
       break;
+    case 'settings':
+      setRules(m.settings);
+      resetRound();
+      G.sending = false;
+      toast(`Der Spielleiter hat die Aufgaben geändert: ${R.label}. Bitte fülle deine Karte neu aus.`, 'info', 6000, 'settings');
+      break;
     case 'newRound':
       P.round = m.round; resetRound();
       Object.assign(G, { phase: 'lobby', balls: [], end: null, cardAt: 0, sending: false });
@@ -149,29 +158,11 @@ function bindUI() {
     connect();
   });
 
-  // Editor: 25 Eingabefelder
-  const ed = $('#p-editor');
-  for (let i = 0; i < CELLS; i++) {
-    if (i === FREE) { ed.append(el('div', { class: 'cell free', text: 'FREI' })); continue; }
-    const inp = el('input', {
-      class: 'cell', type: 'text', inputmode: 'numeric', pattern: '[0-9]*', maxlength: 3,
-      'aria-label': `Feld ${Math.floor(i / 5) + 1}-${(i % 5) + 1}`, 'data-i': i, autocomplete: 'off',
-    });
-    inp.addEventListener('input', () => {
-      inp.value = inp.value.replace(/\D/g, '').slice(0, 3);
-      P.draft[i] = inp.value === '' ? null : parseInt(inp.value, 10);
-      save();
-      renderEditorState();
-    });
-    inp.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); focusNext(i); }
-    });
-    ed.append(inp);
-  }
-  $('#p-fill').addEventListener('click', () => { P.draft = randomFill(P.draft); save(); renderEditor(); });
+  buildEditor();
+  $('#p-fill').addEventListener('click', () => { P.draft = randomFill(P.draft, R); save(); renderEditor(); });
   $('#p-clear').addEventListener('click', () => { if (confirm('Alle Zahlen löschen?')) { P.draft = emptyCard(); save(); renderEditor(); } });
   $('#p-ready').addEventListener('click', () => {
-    if (!validateCard(P.draft).ok) return;
+    if (!validateCard(P.draft, R).ok) return;
     if (!net?.send({ t: 'card', card: P.draft })) return toast('Keine Verbindung zum Spielleiter.', 'bad');
     G.sending = true;
     renderEditorState();
@@ -184,8 +175,51 @@ function bindUI() {
   });
 }
 
+/** Übernimmt neue Regeln; bei anderer Karte/anderem Zahlenraum wird alles zurückgesetzt. */
+function setRules(settings) {
+  const next = rulesFor(settings);
+  const changed = JSON.stringify(next.settings) !== JSON.stringify(R.settings);
+  R = next;
+  P.settings = next.settings;
+  if (changed || P.draft.length !== R.cells) { resetRound(); buildEditor(); }
+  applyLayout();
+}
+
+function applyLayout() {
+  for (const id of ['#p-editor', '#p-grid', '#p-endgrid']) {
+    const g = $(id);
+    g.style.setProperty('--size', R.size);
+    g.classList.toggle('s3', R.size === 3);
+  }
+  $('#p-cardhint').textContent = `${R.label}: Trage ${R.need} verschiedene Zahlen von ${R.min} bis ${R.max} ein.`
+    + (R.free === null ? '' : ' Die Mitte ist ein Freifeld.');
+}
+
+function buildEditor() {
+  const ed = $('#p-editor');
+  ed.replaceChildren();
+  for (let i = 0; i < R.cells; i++) {
+    if (i === R.free) { ed.append(el('div', { class: 'cell free', text: 'FREI' })); continue; }
+    const inp = el('input', {
+      class: 'cell', type: 'text', inputmode: 'numeric', pattern: '[0-9]*', maxlength: 3,
+      'aria-label': `Feld ${Math.floor(i / R.size) + 1}-${(i % R.size) + 1}`, 'data-i': i, autocomplete: 'off',
+    });
+    inp.addEventListener('input', () => {
+      inp.value = inp.value.replace(/\D/g, '').slice(0, 3);
+      P.draft[i] = inp.value === '' ? null : parseInt(inp.value, 10);
+      save();
+      renderEditorState();
+    });
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); focusNext(i); }
+    });
+    ed.append(inp);
+  }
+  applyLayout();
+}
+
 function focusNext(i) {
-  for (let j = i + 1; j < CELLS; j++) {
+  for (let j = i + 1; j < R.cells; j++) {
     const n = document.querySelector(`#p-editor input[data-i="${j}"]`);
     if (n) { n.focus(); n.select(); return; }
   }
@@ -215,7 +249,7 @@ function renderEditor() {
 
 function renderEditorState() {
   if (!P || $('#p-card').hidden) return;
-  const { ok, errors, filled } = validateCard(P.draft);
+  const { ok, errors, filled } = validateCard(P.draft, R);
   document.querySelectorAll('#p-editor input').forEach((inp) => {
     const e = errors[Number(inp.dataset.i)];
     inp.classList.toggle('err', e === 'dup' || e === 'range');
@@ -226,9 +260,9 @@ function renderEditorState() {
   const msg = $('#p-cardmsg');
   msg.className = `msg ${dups || range ? 'bad' : ''}`;
   msg.textContent = G.sending ? 'Karte wird gesendet …'
-    : range ? 'Nur Zahlen von 1 bis 100 sind erlaubt.'
+    : range ? `Nur Zahlen von ${R.min} bis ${R.max} sind erlaubt.`
       : dups ? 'Jede Zahl darf nur einmal vorkommen.'
-        : ok ? 'Perfekt! Deine Karte ist vollständig.' : `${filled} von 24 Feldern ausgefüllt.`;
+        : ok ? 'Perfekt! Deine Karte ist vollständig.' : `${filled} von ${R.need} Feldern ausgefüllt.`;
   $('#p-ready').disabled = !ok || G.sending || !G.connected;
   $('#p-fill').disabled = G.sending;
   $('#p-clear').disabled = G.sending;
@@ -242,11 +276,11 @@ function cellButton(i, cls, text, onclick) {
 function renderGame() {
   const m = new Set(P.marked);
   $('#p-grid').replaceChildren(...P.card.map((v, i) => {
-    if (i === FREE) return el('div', { class: 'cell free', text: 'FREI' });
+    if (i === R.free) return el('div', { class: 'cell free', text: 'FREI' });
     return cellButton(i, m.has(i) ? 'marked' : '', String(v), () => toggleMark(i));
   }));
   $('#p-grid').classList.toggle('locked', !playing());
-  $('#p-bingo').disabled = !playing() || markedLines(P.marked).length === 0;
+  $('#p-bingo').disabled = !playing() || markedLines(P.marked, R).length === 0;
 
   const last = G.balls[G.balls.length - 1];
   if (G.phase === 'lobby') {
@@ -302,7 +336,7 @@ function renderEnd() {
     const drawn = new Set(balls.filter((b) => b.nr > G.cardAt).map((b) => b.result));
     const m = new Set(P.marked);
     grid.replaceChildren(...P.card.map((v, i) => {
-      if (i === FREE) return el('div', { class: 'cell free', text: 'FREI' });
+      if (i === R.free) return el('div', { class: 'cell free', text: 'FREI' });
       const cls = m.has(i) ? (drawn.has(v) ? 'right' : 'wrong') : drawn.has(v) ? 'missed' : '';
       return el('div', { class: `cell ${cls}`, text: String(v) });
     }));

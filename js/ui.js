@@ -17,9 +17,11 @@ export function el(tag, props = {}, ...children) {
   return e;
 }
 
-export function toast(msg, kind = 'info', ms = 3500) {
+export function toast(msg, kind = 'info', ms = 3500, key = null) {
   const box = $('#toasts');
-  const t = el('div', { class: `toast ${kind}`, role: 'status', text: msg });
+  // Gleichartige Hinweise ersetzen sich, statt sich zu stapeln
+  if (key) box.querySelectorAll(`[data-key="${key}"]`).forEach((o) => o.remove());
+  const t = el('div', { class: `toast ${kind}`, role: 'status', text: msg, 'data-key': key });
   box.append(t);
   setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 400); }, ms);
 }

@@ -1,5 +1,5 @@
 // Spielleiter: hält den kompletten Spielzustand und ist maßgeblich.
-import { generateTask, checkBingo, validateCard, lineLabel, FREE, CELLS, MAX } from './game.js';
+import { generateTask, checkBingo, validateCard, lineLabel, rulesFor, normalizeSettings, DEFAULT_SETTINGS } from './game.js';
 import { HostNet, peerId } from './net.js';
 import { $, $$, el, toast, store, beep, fanfare, keepAwake, cleanNick } from './ui.js';
 
@@ -8,6 +8,7 @@ const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const RING = 2 * Math.PI * 54;
 
 let S; // Spielzustand (wird gespeichert)
+let R; // Regeln der aktuellen Runde (aus S.settings abgeleitet)
 let net;
 const conns = new Map(); // playerId -> DataConnection
 let bannerTimer;
@@ -15,7 +16,7 @@ let bannerTimer;
 const newCode = () => Array.from({ length: 6 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
 const fresh = (code = newCode()) => ({
   code, round: 1, phase: 'lobby', interval: 30, balls: [], nextAt: 0, remaining: 0,
-  players: {}, winners: [], claims: [], sound: true,
+  players: {}, winners: [], claims: [], sound: true, settings: { ...DEFAULT_SETTINGS },
 });
 
 function save() { store.set(STORE, { ...S, savedAt: Date.now() }); }
@@ -30,6 +31,8 @@ const playerList = () => Object.entries(S.players).sort((a, b) => a[1].joinedAt 
 
 export function startHost() {
   S = load() || fresh();
+  S.settings = normalizeSettings(S.settings);
+  R = rulesFor(S.settings);
   if (S.phase === 'running') { S.remaining = Math.max(0, S.nextAt - Date.now()); S.phase = 'paused'; }
   for (const p of Object.values(S.players)) p.connected = false;
   save();
@@ -85,7 +88,7 @@ function handleJoin(conn, msg) {
 function welcome(pid) {
   const p = S.players[pid];
   return {
-    t: 'welcome', nick: p.nick, round: S.round, phase: S.phase, interval: S.interval, remaining: rem(),
+    t: 'welcome', nick: p.nick, round: S.round, settings: S.settings, phase: S.phase, interval: S.interval, remaining: rem(),
     balls: S.balls.map((b, i) => ({ nr: i + 1, text: b.text })),
     card: p.card, cardAt: p.cardAt, won: p.won,
     end: S.phase === 'ended' ? endPayload() : null,
@@ -94,9 +97,9 @@ function welcome(pid) {
 
 function handleCard(conn, p, msg) {
   if (p.card) return send(conn, { t: 'cardOk', card: p.card, cardAt: p.cardAt });
-  if (!Array.isArray(msg.card) || msg.card.length !== CELLS) return;
-  const card = msg.card.map((v, i) => (i === FREE ? null : Number(v)));
-  if (!validateCard(card).ok) return send(conn, { t: 'error', code: 'badCard' });
+  if (!Array.isArray(msg.card) || msg.card.length !== R.cells) return;
+  const card = msg.card.map((v, i) => (i === R.free ? null : Number(v)));
+  if (!validateCard(card, R).ok) return send(conn, { t: 'error', code: 'badCard' });
   p.card = card;
   p.cardAt = S.balls.length; // nur Kugeln ab jetzt zählen (wichtig für Nachzügler)
   send(conn, { t: 'cardOk', card, cardAt: p.cardAt });
@@ -111,9 +114,9 @@ function handleBingo(conn, p, msg) {
   if (p.lastBingo && now - p.lastBingo < 2000) return;
   p.lastBingo = now;
 
-  const marked = Array.isArray(msg.marked) ? msg.marked.filter((i) => Number.isInteger(i) && i >= 0 && i < CELLS) : [];
+  const marked = Array.isArray(msg.marked) ? msg.marked.filter((i) => Number.isInteger(i) && i >= 0 && i < R.cells) : [];
   const drawn = new Set(S.balls.slice(p.cardAt).map((b) => b.result));
-  const r = checkBingo(p.card, marked, drawn);
+  const r = checkBingo(p.card, marked, drawn, R);
   const ballNr = S.balls.length;
   const pid = conn.playerId;
   let place = null;
@@ -122,7 +125,7 @@ function handleBingo(conn, p, msg) {
     if (!p.won) { p.won = true; S.winners.push({ pid, nick: p.nick, ballNr }); first = true; }
     place = S.winners.findIndex((w) => w.pid === pid) + 1;
   }
-  const lines = r.lines.map(lineLabel);
+  const lines = r.lines.map((i) => lineLabel(i, R));
   S.claims.unshift({ nick: p.nick, ballNr, valid: r.valid, lines, wrong: r.wrong, place });
   send(conn, { t: 'bingoResult', valid: r.valid, lines, wrong: r.wrong, place });
   if (first) {
@@ -138,10 +141,10 @@ function handleBingo(conn, p, msg) {
 // ---------- Spielablauf ----------
 
 function drawBall() {
-  const t = generateTask(new Set(S.balls.map((b) => b.result)));
+  const t = generateTask(new Set(S.balls.map((b) => b.result)), R);
   if (!t) {
     if (S.phase === 'running') { S.phase = 'paused'; S.remaining = 0; broadcastState(); }
-    toast(`Alle ${MAX} Kugeln wurden gezogen.`, 'warn');
+    toast(`Alle ${R.total} Kugeln wurden gezogen.`, 'warn');
     renderGame();
     return;
   }
@@ -177,7 +180,7 @@ function startRound() {
 function togglePause() {
   if (S.phase === 'running') { S.remaining = rem(); S.phase = 'paused'; }
   else if (S.phase === 'paused') {
-    if (S.balls.length >= MAX) return toast('Alle Kugeln sind gezogen.', 'warn');
+    if (S.balls.length >= R.total) return toast('Alle Kugeln sind gezogen.', 'warn');
     S.phase = 'running'; S.nextAt = Date.now() + S.remaining;
   }
   broadcastState();
@@ -253,11 +256,52 @@ function bindUI() {
   $$('.h-interval').forEach((i) => i.addEventListener('input', (e) => setInterval_(e.target.value)));
   setInterval_(S.interval);
 
-  const board = $('#h-board');
-  for (let n = 1; n <= MAX; n++) board.append(el('span', { 'data-n': n, text: n }));
+  $('#h-tasks').addEventListener('change', () => applySettings(readSettings()));
+}
+
+// ---------- Aufgaben-Einstellungen ----------
+
+function readSettings() {
+  const val = (name) => document.querySelector(`input[name="${name}"]:checked`)?.value;
+  return { mode: val('h-mode'), level: val('h-level'), range: Number(val('h-range')), sub: $('#h-sub').checked };
+}
+
+function applySettings(next) {
+  const s = normalizeSettings(next);
+  if (S.phase !== 'lobby' || JSON.stringify(s) === JSON.stringify(S.settings)) return renderSettings();
+  const ready = Object.values(S.players).filter((p) => p.card).length;
+  if (ready && !confirm(`${ready} ${ready === 1 ? 'Karte ist' : 'Karten sind'} schon abgegeben. Bei geänderten Aufgaben müssen alle ihre Karte neu ausfüllen. Fortfahren?`)) {
+    return renderSettings();
+  }
+  S.settings = s;
+  R = rulesFor(s);
+  for (const p of Object.values(S.players)) Object.assign(p, { card: null, cardAt: 0 });
+  broadcast({ t: 'settings', settings: s });
+  save();
+  renderSettings();
+  renderBoard();
+  renderPlayers();
+}
+
+function renderSettings() {
+  const s = S.settings;
+  const check = (name, value) => { const i = document.querySelector(`input[name="${name}"][value="${value}"]`); if (i) i.checked = true; };
+  check('h-mode', s.mode); check('h-level', s.level); check('h-range', s.range);
+  $('#h-sub').checked = s.sub;
+  $('#h-mul-opts').hidden = s.mode !== 'mul';
+  $('#h-add-opts').hidden = s.mode !== 'add';
+  const factors = R.mode === 'mul' ? ` · a von 1 bis ${R.aMax}, b von 1 bis ${R.bMax}` : '';
+  $('#h-rules-info').textContent = `Beispiel: ${R.example}${factors} · Karte ${R.size}×${R.size}`
+    + `${R.free === null ? '' : ' mit Freifeld'}, Zahlen ${R.min}–${R.max} · ${R.total} Kugeln`;
+}
+
+function renderBoard() {
+  $('#h-board').replaceChildren(...Array.from({ length: R.total }, (_, i) => el('span', { 'data-n': R.min + i, text: R.min + i })));
 }
 
 function renderAll() {
+  renderSettings();
+  renderBoard();
   $('#h-lobby').hidden = S.phase !== 'lobby';
   $('#h-game').hidden = S.phase !== 'running' && S.phase !== 'paused';
   $('#h-end').hidden = S.phase !== 'ended';
@@ -324,7 +368,7 @@ function renderPlayers() {
 function renderGame() {
   if (S.phase !== 'running' && S.phase !== 'paused') return;
   const last = S.balls[S.balls.length - 1];
-  $('#h-ballnr').textContent = `Kugel ${S.balls.length} von ${MAX}`;
+  $('#h-ballnr').textContent = `Kugel ${S.balls.length} von ${R.total} · ${R.label}`;
   $('#h-task').textContent = last ? last.text : '–';
   $('#h-pause').textContent = S.phase === 'paused' ? '▶ Weiter' : '⏸ Pause';
   $('#h-game').classList.toggle('paused', S.phase === 'paused');
