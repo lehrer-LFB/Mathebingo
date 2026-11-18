@@ -1,0 +1,11 @@
+.env*
+!.env.example
+node_modules
+test-results
+playwright-report
+.git
+.github
+e2e
+test
+*.py
+alpha 0.1

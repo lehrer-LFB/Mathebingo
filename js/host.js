@@ -1,6 +1,6 @@
 // Spielleiter: hält den kompletten Spielzustand und ist maßgeblich.
 import { generateTask, checkBingo, validateCard, lineLabel, rulesFor, normalizeSettings, DEFAULT_SETTINGS } from './game.js';
-import { HostNet, peerId } from './net.js';
+import { HostNet, mode } from './net.js';
 import { $, $$, el, toast, store, beep, fanfare, keepAwake, cleanNick } from './ui.js';
 
 const STORE = 'mb_host_v1';
@@ -16,7 +16,7 @@ let bannerTimer;
 const newCode = () => Array.from({ length: 6 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
 const fresh = (code = newCode()) => ({
   code, round: 1, phase: 'lobby', interval: 30, balls: [], nextAt: 0, remaining: 0,
-  players: {}, winners: [], claims: [], sound: true, settings: { ...DEFAULT_SETTINGS },
+  players: {}, winners: [], claims: [], sound: true, settings: { ...DEFAULT_SETTINGS }, banned: [], relayToken: null, locked: false,
 });
 
 function save() { store.set(STORE, { ...S, savedAt: Date.now() }); }
@@ -32,13 +32,23 @@ const playerList = () => Object.entries(S.players).sort((a, b) => a[1].joinedAt 
 export function startHost() {
   S = load() || fresh();
   S.settings = normalizeSettings(S.settings);
+  S.banned ||= [];
   R = rulesFor(S.settings);
   if (S.phase === 'running') { S.remaining = Math.max(0, S.nextAt - Date.now()); S.phase = 'paused'; }
   for (const p of Object.values(S.players)) p.connected = false;
   save();
   bindUI();
   renderAll();
-  net = new HostNet(peerId(S.code), { status: renderStatus, data: onData, close: onClose });
+  net = HostNet(S.code, {
+    status: renderStatus, data: onData, close: onClose,
+    initialToken: S.relayToken,
+    locked: () => S.locked,
+    token: (t) => { S.relayToken = t; save(); },
+    room: (code) => { // Code war belegt → neuer Raum, alle müssen neu beitreten
+      S.code = code; S.players = {}; conns.clear(); save(); renderCode(); renderPlayers();
+      toast(`Neuer Raumcode: ${code}`, 'warn', 8000);
+    },
+  });
   setInterval(tick, 200);
   keepAwake();
 }
@@ -65,21 +75,35 @@ function onData(conn, msg) {
   else if (msg.t === 'bingo') handleBingo(conn, p, msg);
 }
 
+/** Doppelte Spitznamen bekommen eine Ziffer angehängt: „Max“, „Max 2“, „Max 3“ … */
+function uniqueNick(nick, pid) {
+  const taken = new Set(Object.entries(S.players).filter(([id]) => id !== pid).map(([, p]) => p.nick.toLowerCase()));
+  if (!taken.has(nick.toLowerCase())) return nick;
+  for (let n = 2; ; n++) {
+    const suffix = ` ${n}`;
+    const cand = `${[...nick].slice(0, 20 - suffix.length).join('').trim()}${suffix}`;
+    if (!taken.has(cand.toLowerCase())) return cand;
+  }
+}
+
 function handleJoin(conn, msg) {
   const pid = String(msg.playerId || '').slice(0, 64);
-  const nick = cleanNick(msg.nick);
+  let nick = cleanNick(msg.nick);
   if (!pid || !nick) return send(conn, { t: 'error', code: 'badNick' });
-  const taken = Object.entries(S.players).some(([id, p]) => id !== pid && p.nick.toLowerCase() === nick.toLowerCase());
-  if (taken) return send(conn, { t: 'error', code: 'nickTaken' });
+  if (S.banned.includes(pid)) { send(conn, { t: 'kicked' }); conn.kick?.(); return; }
 
   let p = S.players[pid];
+  if (!p && S.locked) return send(conn, { t: 'error', code: 'locked' });
+  // Wer schon im Raum ist, behält seinen Namen; neue Namen werden eindeutig gemacht
+  nick = p && p.nick.toLowerCase() === nick.toLowerCase() ? p.nick : uniqueNick(nick, pid);
   if (!p) p = S.players[pid] = { nick, card: null, cardAt: 0, won: false, joinedAt: Date.now() };
   p.nick = nick;
   p.connected = true;
+  p.rpid = conn.pid || null;
   const old = conns.get(pid);
   conn.playerId = pid;
   conns.set(pid, conn);
-  if (old && old !== conn) try { old.close(); } catch { /* egal */ }
+  if (old && old !== conn) { conns.delete(pid); conns.set(pid, conn); try { old.close(); } catch { /* egal */ } }
   send(conn, welcome(pid));
   save();
   renderPlayers();
@@ -216,6 +240,32 @@ function newRound() {
   renderAll();
 }
 
+function kickPlayer(pid) {
+  const p = S.players[pid];
+  if (!p || !confirm(`„${p.nick}“ aus dem Raum entfernen? Die Karte wird gelöscht und ein erneuter Beitritt von diesem Gerät ist gesperrt.`)) return;
+  const conn = conns.get(pid);
+  if (conn) { send(conn, { t: 'kicked' }); conn.kick?.(); conns.delete(pid); }
+  else if (p.rpid) net.kickPid?.(p.rpid);
+  delete S.players[pid];
+  S.banned.push(pid);
+  save();
+  renderPlayers();
+  toast(`${p.nick} wurde entfernt.`);
+}
+
+function setLocked(v) {
+  S.locked = !!v;
+  net.setLocked?.(S.locked);
+  save();
+  renderLock();
+  toast(S.locked ? 'Raum gesperrt: Niemand kann neu beitreten. Wer schon drin ist, kommt weiter zurück.' : 'Raum wieder offen für neue Mitspielende.', 'info', 4000, 'lock');
+}
+
+function renderLock() {
+  $$('.h-lock').forEach((c) => { c.checked = !!S.locked; });
+  $('#h-joinbox').classList.toggle('locked', !!S.locked);
+}
+
 function setInterval_(v) {
   S.interval = Math.min(120, Math.max(10, Number(v) || 30));
   $$('.h-interval').forEach((i) => { i.value = S.interval; });
@@ -244,13 +294,15 @@ function bindUI() {
   $('#h-newgame').addEventListener('click', () => {
     if (!confirm('Neues Spiel mit neuem Raumcode starten? Alle Spieler müssen neu beitreten.')) return;
     broadcast({ t: 'closed' });
+    net.closeRoom?.();
     store.del(STORE);
-    net.destroy();
-    location.reload();
+    setTimeout(() => { net.destroy(); location.reload(); }, 300);
   });
   $('#h-copy').addEventListener('click', async () => {
     try { await navigator.clipboard.writeText(joinUrl()); toast('Link kopiert'); } catch { toast(joinUrl()); }
   });
+  $$('.h-lock').forEach((c) => c.addEventListener('change', (e) => setLocked(e.target.checked)));
+  renderLock();
   $('#h-sound').checked = S.sound;
   $('#h-sound').addEventListener('change', (e) => { S.sound = e.target.checked; save(); });
   $$('.h-interval').forEach((i) => i.addEventListener('input', (e) => setInterval_(e.target.value)));
@@ -332,11 +384,21 @@ function renderStatus(s, tries) {
     reconnecting: ['warn', 'Verbindung zum Vermittlungsserver wird wiederhergestellt …'],
     busy: ['warn', `Raumcode wird noch freigegeben … (Versuch ${tries})`],
     incompatible: ['bad', 'Dieser Browser unterstützt kein WebRTC'],
+    restart: ['warn', 'Server startet neu – verbinde gleich wieder …'],
+    login: ['bad', 'Anmeldung abgelaufen – bitte im Weblehrerzimmer neu anmelden'],
+    full: ['bad', 'Server voll – zu viele offene Räume, neuer Versuch in 30 s'],
+    replaced: ['bad', 'Raum wurde in einem anderen Tab geöffnet'],
+    closed: ['bad', 'Raum wurde geschlossen'],
   };
+  if (mode() === 'relay' && s === 'reconnecting') map.reconnecting = ['warn', 'Verbindung zum Server wird wiederhergestellt …'];
   const [cls, text] = map[s] || ['warn', s];
   const st = $('#h-status');
   st.className = `status ${cls}`;
   st.textContent = text;
+  if (s === 'closed') {
+    const auto = tries === 'idle' || tries === 'maxAge' || tries === 'hostGone';
+    toast(`Der Raum wurde ${auto ? 'nach langer Zeit automatisch ' : ''}geschlossen. Mit „Neues Spiel“ geht es weiter.`, 'warn', 10000);
+  }
   if (s === 'busy' && tries === 8) toast('Der Raumcode ist noch belegt. Falls das so bleibt: „Neues Spiel“ wählen.', 'warn', 8000);
 }
 
@@ -346,7 +408,8 @@ function playerItem(pid, p, inGame) {
   else if (p.won) badge = el('span', { class: 'badge win', text: `🏆 Platz ${S.winners.findIndex((w) => w.pid === pid) + 1}` });
   else if (p.card) badge = el('span', { class: 'badge ok', text: inGame && p.cardAt > 0 ? `Karte ✓ (ab Kugel ${p.cardAt + 1})` : 'Karte ✓' });
   else badge = el('span', { class: 'badge wait', text: 'füllt aus …' });
-  return el('li', { class: p.connected ? '' : 'offline' }, el('span', { class: 'nick', text: p.nick }), badge);
+  const kick = el('button', { type: 'button', class: 'kick', 'aria-label': `${p.nick} entfernen`, title: 'Aus dem Raum entfernen', text: '✕', onclick: () => kickPlayer(pid) });
+  return el('li', { class: p.connected ? '' : 'offline' }, el('span', { class: 'nick', text: p.nick }), el('span', { class: 'pright' }, badge, kick));
 }
 
 function renderPlayers() {
