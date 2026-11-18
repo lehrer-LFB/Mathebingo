@@ -26,11 +26,15 @@ export function toast(msg, kind = 'info', ms = 3500, key = null) {
   setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 400); }, ms);
 }
 
+// Nur sessionStorage: Der Spielstand überlebt ein Neuladen im selben Tab,
+// bleibt aber nicht dauerhaft auf (fremden) Geräten liegen.
 export const store = {
-  get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
-  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* privat */ } },
-  del(k) { try { localStorage.removeItem(k); } catch { /* privat */ } },
+  get(k) { try { return JSON.parse(sessionStorage.getItem(k)); } catch { return null; } },
+  set(k, v) { try { sessionStorage.setItem(k, JSON.stringify(v)); } catch { /* privat */ } },
+  del(k) { try { sessionStorage.removeItem(k); } catch { /* privat */ } },
 };
+// Reste älterer Versionen (localStorage) entfernen
+try { ['mb_host_v1', 'mb_player_v1'].forEach((k) => localStorage.removeItem(k)); } catch { /* egal */ }
 
 export function randomId() {
   try { return crypto.randomUUID(); } catch { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
@@ -64,5 +68,8 @@ export function keepAwake() {
   document.addEventListener('visibilitychange', req);
 }
 
-export const cleanNick = (n) => String(n ?? '').replace(/\s+/g, ' ').trim().slice(0, 20);
+/** Spitzname: Steuer- und Richtungszeichen raus, Leerraum zusammenfassen, 1–20 Zeichen. */
+export const cleanNick = (n) => [...String(n ?? '')
+  .replace(/[\p{Cc}\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/gu, ' ')
+  .replace(/\s+/g, ' ').trim()].slice(0, 20).join('').trim();
 export const cleanCode = (c) => String(c ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);

@@ -2,5 +2,19 @@
   "name": "mathebingo",
   "private": true,
   "type": "module",
-  "scripts": { "test": "node --test test/*.test.mjs" }
+  "scripts": {
+    "start": "node server/index.mjs",
+    "test": "node --test test/*.test.mjs",
+    "e2e": "playwright test"
+  },
+  "dependencies": {
+    "@auth/core": "0.41.3",
+    "ws": "8.23.0"
+  },
+  "devDependencies": {
+    "@fontsource/josefin-sans": "5.3.0",
+    "@fontsource/lato": "5.3.0",
+    "@playwright/test": "1.65.1",
+    "qrcode-generator": "1.4.4"
+  }
 }

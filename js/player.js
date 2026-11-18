@@ -1,6 +1,6 @@
 // Spieler: Spitzname, eigene Karte, markieren, BINGO melden.
 import { validateCard, randomFill, markedLines, rulesFor } from './game.js';
-import { PlayerNet, peerId } from './net.js';
+import { PlayerNet, mode } from './net.js';
 import { $, el, toast, store, randomId, keepAwake, cleanNick, cleanCode } from './ui.js';
 
 const STORE = 'mb_player_v1';
@@ -11,6 +11,7 @@ let P; // gespeichert: playerId, room, nick, round, settings, card, draft, marke
 const G = { joined: false, connected: false, phase: 'lobby', balls: [], interval: 30, nextAt: 0, remaining: 0, cardAt: 0, end: null, sending: false };
 let net = null;
 let lastBingo = 0;
+let noHostTries = 0;
 
 const save = () => store.set(STORE, P);
 const resetRound = () => { P.card = null; P.draft = emptyCard(); P.marked = []; };
@@ -20,7 +21,7 @@ export function startPlayer(roomFromHash) {
   P = store.get(STORE) || {};
   P.playerId ||= randomId();
   R = rulesFor(P.settings);
-  if (roomFromHash && P.room !== roomFromHash) { P.room = roomFromHash; P.round = null; P.autoJoin = false; resetRound(); }
+  if (roomFromHash && P.room !== roomFromHash) { P.room = roomFromHash; P.round = null; P.autoJoin = false; P.relayToken = null; resetRound(); }
   if (!Array.isArray(P.draft) || P.draft.length !== R.cells) P.draft = emptyCard();
   if (!Array.isArray(P.marked)) P.marked = [];
   save();
@@ -41,16 +42,23 @@ function connect() {
   $('#p-joinbtn').disabled = true;
   if (net && net.room === P.room) { if (!net.send({ t: 'join', playerId: P.playerId, nick: P.nick })) net.retry(0); return; }
   if (net) net.destroy();
-  net = new PlayerNet(peerId(P.room), { status, open: () => net.send({ t: 'join', playerId: P.playerId, nick: P.nick }), data: onMsg });
-  net.room = P.room;
+  net = PlayerNet(P.room, {
+    status, data: onMsg,
+    open: () => net.send({ t: 'join', playerId: P.playerId, nick: P.nick }),
+    initialToken: P.relayToken,
+    token: (t) => { P.relayToken = t; save(); },
+  });
 }
 
-function status(s) {
+function status(s, info) {
   G.connected = s === 'online';
+  if (s === 'online') noHostTries = 0;
   const map = {
     online: ['online', 'verbunden'], connecting: ['warn', 'verbinde …'], offline: ['bad', 'keine Verbindung – neuer Versuch …'],
     'no-host': ['bad', 'Raum nicht erreichbar'], incompatible: ['bad', 'Browser ohne WebRTC'],
     blocked: ['bad', 'Verbindung blockiert?'], 'no-signal': ['bad', 'Server nicht erreichbar'],
+    'host-away': ['warn', 'Lehrkraft getrennt, warte …'], restart: ['warn', 'Server startet neu …'],
+    full: ['bad', 'Raum ist voll'], locked: ['bad', 'Raum gesperrt'], rate: ['bad', 'kurz gesperrt'], replaced: ['bad', 'in anderem Tab geöffnet'],
   };
   const [cls, text] = map[s] || ['warn', s];
   const st = $('#p-status');
@@ -58,10 +66,30 @@ function status(s) {
   st.textContent = text;
   renderNetWarning(s);
   if (!G.joined && (s === 'blocked' || s === 'no-signal')) $('#p-joinbtn').disabled = false;
-  if (!G.joined && s === 'no-host') {
+  if (s === 'no-host' && mode() === 'relay') {
+    // Kein automatisches Dauer-Probieren: Fehlversuche zählen für das Rate-Limit der ganzen Schule (gemeinsame IP)
+    if (P.autoJoin && noHostTries < 6) {
+      noHostTries++;
+      setJoinMsg(`Raum ${P.room} ist gerade nicht da (z. B. Neustart des Servers). Neuer Versuch in 10 Sekunden …`, 'warn');
+      setTimeout(() => net?.retry(0), 10000);
+    } else {
+      G.joined = false;
+      setJoinMsg(`Raum ${P.room} wurde nicht gefunden. Stimmt der Code und ist das Spiel bei der Lehrkraft geöffnet?`, 'bad');
+      $('#p-joinbtn').disabled = false;
+    }
+  } else if (!G.joined && s === 'no-host') {
     setJoinMsg(`Raum ${P.room} wurde nicht gefunden. Stimmt der Code und ist das Spiel beim Spielleiter geöffnet? Neuer Versuch läuft …`, 'bad');
     $('#p-joinbtn').disabled = false;
   }
+  if (s === 'locked') { G.joined = false; setJoinMsg('Der Raum ist gesperrt – die Lehrkraft lässt gerade niemanden neu hinein.', 'bad'); $('#p-joinbtn').disabled = false; }
+  if (s === 'full') { G.joined = false; setJoinMsg('Der Raum ist voll (höchstens 40 Mitspielende).', 'bad'); $('#p-joinbtn').disabled = false; }
+  if (s === 'rate') {
+    G.joined = false;
+    setJoinMsg(`Zu viele falsche Raumcodes aus diesem Netz. Bitte in ${Math.ceil((info?.retryIn || 60000) / 1000)} Sekunden noch einmal versuchen.`, 'bad');
+    $('#p-joinbtn').disabled = false;
+  }
+  if (s === 'replaced') { G.joined = false; P.autoJoin = false; setJoinMsg('Das Spiel wurde in einem anderen Tab geöffnet. Hier ist die Verbindung beendet.', 'warn'); }
+  if (['no-host', 'full', 'rate', 'replaced', 'locked'].includes(s)) render();
   renderEditorState();
 }
 
@@ -69,6 +97,17 @@ function status(s) {
 function renderNetWarning(s) {
   const box = $('#p-netwarn');
   if (s === 'online' || s === 'connecting' || s === 'no-host') { box.hidden = true; return; }
+  const info = {
+    'host-away': ['Lehrkraft getrennt, warte …', 'Das Gerät der Lehrkraft ist gerade nicht verbunden. Deine Karte bleibt erhalten, es geht automatisch weiter.'],
+    restart: ['Der Server startet neu …', 'Das dauert nur einen Moment. Deine Karte bleibt erhalten, du wirst automatisch wieder verbunden.'],
+  };
+  if (info[s]) {
+    box.className = 'netwarn info';
+    box.replaceChildren(el('strong', { text: info[s][0] }), el('p', { text: info[s][1] }));
+    box.hidden = false;
+    return;
+  }
+  box.className = 'netwarn';
   const texts = {
     blocked: ['Die Verbindung zum Spielleiter kommt nicht zustande.',
       'Der Raum wurde gefunden, aber das Netzwerk (z. B. das Schul-WLAN) blockiert vermutlich die direkte Verbindung zwischen den Geräten.'],
@@ -91,6 +130,8 @@ function onMsg(m) {
   switch (m.t) {
     case 'welcome': {
       G.joined = true;
+      if (m.nick !== P.nick && !G.nickNoted) toast(`Den Spitznamen gab es schon – du heißt jetzt „${m.nick}“.`, 'info', 6000);
+      G.nickNoted = true;
       P.nick = m.nick;
       setRules(m.settings);
       P.autoJoin = true;
@@ -112,6 +153,10 @@ function onMsg(m) {
         setJoinMsg(m.code === 'nickTaken' ? 'Dieser Spitzname ist schon vergeben – bitte wähle einen anderen.' : 'Bitte gib einen Spitznamen ein.', 'bad');
         $('#p-joinbtn').disabled = false;
         $('#p-nickname').select();
+      } else if (m.code === 'locked') {
+        G.joined = false; P.autoJoin = false;
+        setJoinMsg('Der Raum ist gesperrt – die Lehrkraft lässt gerade niemanden neu hinein.', 'bad');
+        $('#p-joinbtn').disabled = false;
       } else if (m.code === 'badCard') { G.sending = false; toast('Die Karte wurde nicht angenommen. Bitte prüfe deine Zahlen.', 'bad'); }
       break;
     case 'cardOk':
@@ -152,7 +197,16 @@ function onMsg(m) {
       break;
     case 'closed':
       G.joined = false; P.autoJoin = false; net?.destroy(); net = null;
-      setJoinMsg('Der Spielleiter hat das Spiel beendet. Für ein neues Spiel brauchst du den neuen Raumcode.', 'warn');
+      setJoinMsg(m.reason && m.reason !== 'hostClosed'
+        ? 'Der Raum wurde geschlossen. Für ein neues Spiel brauchst du den neuen Raumcode.'
+        : 'Der Spielleiter hat das Spiel beendet. Für ein neues Spiel brauchst du den neuen Raumcode.', 'warn');
+      $('#p-netwarn').hidden = true;
+      break;
+    case 'kicked':
+      G.joined = false; P.autoJoin = false; P.relayToken = null; net?.destroy(); net = null;
+      setJoinMsg('Die Lehrkraft hat dich aus dem Raum entfernt.', 'bad');
+      $('#p-netwarn').hidden = true;
+      $('#p-status').textContent = '';
       break;
     default:
       return;
@@ -175,7 +229,9 @@ function bindUI() {
     const nick = cleanNick($('#p-nickname').value);
     if (room.length !== 6) return setJoinMsg('Der Raumcode hat 6 Zeichen.', 'bad');
     if (!nick) return setJoinMsg('Bitte gib einen Spitznamen ein.', 'bad');
-    if (room !== P.room) { P.room = room; P.round = null; resetRound(); }
+    if (room !== P.room) { P.room = room; P.round = null; P.relayToken = null; resetRound(); }
+    G.nickNoted = false;
+    noHostTries = 0;
     P.nick = nick;
     save();
     history.replaceState(null, '', `#join?room=${room}`);

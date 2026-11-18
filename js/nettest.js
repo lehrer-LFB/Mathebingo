@@ -1,5 +1,8 @@
 // Verbindungstest: prüft Schritt für Schritt, ob das aktuelle Netzwerk Mathebingo zulässt.
 import { $, el, toast } from './ui.js';
+import { loadPeerJs } from './net.js';
+
+let MODE = 'peer';
 
 const results = [];
 
@@ -71,6 +74,49 @@ function probeSignaling(timeout = 10000) {
   });
 }
 
+/** Relay-Modus: WebSocket zum Schulserver öffnen und Ping/Pong prüfen. */
+function probeRelay(timeout = 8000) {
+  return new Promise((resolve) => {
+    let ws;
+    let done = false;
+    const t0 = performance.now();
+    const finish = (ok, detail) => {
+      if (done) return;
+      done = true;
+      try { ws.close(); } catch { /* egal */ }
+      resolve({ ok, detail });
+    };
+    try {
+      const u = new URL('ws', location.href);
+      u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:';
+      u.hash = '';
+      ws = new WebSocket(u.href);
+    } catch (e) { finish(false, e.message); return; }
+    ws.onopen = () => ws.send(JSON.stringify({ op: 'ping' }));
+    ws.onmessage = (e) => {
+      try { if (JSON.parse(e.data).op === 'pong') finish(true, `Verbindung steht (${Math.round(performance.now() - t0)} ms).`); } catch { /* egal */ }
+    };
+    ws.onclose = () => finish(false, 'Verbindung abgelehnt oder unterbrochen – ein Filter blockiert vermutlich WebSockets.');
+    setTimeout(() => finish(false, `Keine Antwort innerhalb von ${timeout / 1000} s.`), timeout);
+  });
+}
+
+async function runRelay() {
+  const r = {};
+  r.libs = await step('libs', 'Programmbibliotheken geladen', async () => {
+    const ok = typeof qrcode === 'function';
+    return { ok, detail: ok ? 'QR-Code-Generator ist da.' : 'QR-Code-Generator fehlt.' };
+  });
+  r.http = await step('http', 'Schulserver erreichbar', async () => {
+    const res = await fetch('./health', { cache: 'no-store' });
+    return { ok: res.ok, detail: res.ok ? `${location.host} antwortet.` : `Antwort ${res.status}.` };
+  });
+  r.ws = await step('ws', 'Spielverbindung (WebSocket über Port 443)', () => probeRelay());
+  if (r.http && r.ws) return ['ok', 'Alles in Ordnung: Mathebingo läuft hier über den Schulserver, direkte Verbindungen zwischen den Geräten sind nicht nötig.'];
+  if (!r.http) return ['bad', 'Der Schulserver ist von diesem Gerät aus nicht erreichbar. Ist das Gerät online?'];
+  return ['bad', 'Der Server ist erreichbar, aber die Spielverbindung (WebSocket) wird blockiert – vermutlich durch einen Webfilter. Bitte die IT bitten, WebSockets zu dieser Adresse zuzulassen.'];
+}
+
 function verdict(r) {
   if (!r.libs) return ['bad', 'Die Programmbibliotheken konnten nicht geladen werden. Vermutlich sperrt ein Filter unpkg.com oder cdn.jsdelivr.net. Diese Adressen müssten freigegeben werden.'];
   if (!r.rtc) return ['bad', 'Dieser Browser unterstützt kein WebRTC. Bitte einen aktuellen Browser (Chrome, Safari, Firefox, Edge) verwenden.'];
@@ -86,6 +132,12 @@ async function runAll() {
   $('#t-list').replaceChildren();
   $('#t-verdict').hidden = true;
   $('#t-run').disabled = true;
+  if (MODE === 'relay') {
+    showVerdict(...await runRelay());
+    $('#t-run').disabled = false;
+    return;
+  }
+  await loadPeerJs();
   const r = {};
   r.libs = await step('libs', 'Programmbibliotheken geladen', async () => {
     const peer = typeof Peer === 'function';
@@ -103,12 +155,15 @@ async function runAll() {
     r.stun = await step('stun', 'Direkte Verbindungen möglich (STUN über UDP, Port 19302)',
       () => probeIce([{ urls: 'stun:stun.l.google.com:19302' }], 'srflx'));
   }
-  const [cls, text] = verdict(r);
+  showVerdict(...verdict(r));
+  $('#t-run').disabled = false;
+}
+
+function showVerdict(cls, text) {
   const v = $('#t-verdict');
   v.className = `panel verdict ${cls}`;
   v.replaceChildren(el('strong', { text: cls === 'ok' ? 'Ergebnis: Netzwerk geeignet' : cls === 'warn' ? 'Ergebnis: Direktverbindung möglich, aber ohne Ausweichweg' : 'Ergebnis: Verbindung blockiert' }), el('p', { text }));
   v.hidden = false;
-  $('#t-run').disabled = false;
 }
 
 async function runCustom() {
@@ -127,6 +182,7 @@ function report() {
   const lines = [
     `Mathebingo – Verbindungstest ${new Date().toLocaleString('de-DE')}`,
     `Browser: ${navigator.userAgent}`,
+    `Modus: ${MODE === 'relay' ? `Schulserver (${location.host})` : 'PeerJS/WebRTC'}`,
     ...results.map((x) => `${x.ok === null ? '–' : x.ok ? 'OK  ' : 'FEHL'}  ${x.title}: ${x.detail}`),
   ];
   const v = $('#t-verdict');
@@ -134,7 +190,9 @@ function report() {
   return lines.join('\n');
 }
 
-export function startNetTest() {
+export function startNetTest(mode = 'peer') {
+  MODE = mode;
+  if (MODE === 'relay') $('#t-turn').hidden = true;
   $('#t-run').addEventListener('click', runAll);
   $('#t-turn-run').addEventListener('click', runCustom);
   $('#t-copy').addEventListener('click', async () => {

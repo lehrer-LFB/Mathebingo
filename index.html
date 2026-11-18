@@ -5,18 +5,35 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Mathebingo</title>
   <meta name="description" content="Mathebingo für die Klasse: Rechnungen lösen, Ergebnis auf der eigenen Bingokarte finden, BINGO rufen.">
-  <meta name="theme-color" content="#3b5bdb">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='46' fill='%233b5bdb'/%3E%3Ctext x='50' y='66' font-size='46' text-anchor='middle' fill='white' font-family='Arial' font-weight='bold'%3E%C3%97%3C/text%3E%3C/svg%3E">
+  <meta name="theme-color" content="#004c93">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='46' fill='%23004c93'/%3E%3Ctext x='50' y='66' font-size='46' text-anchor='middle' fill='white' font-family='Arial' font-weight='bold'%3E%C3%97%3C/text%3E%3C/svg%3E">
+  <!-- Alles lokal, keine CDNs (Versionen: vendor/README.md). PeerJS lädt nur die GitHub-Pages-Version nach. -->
+  <link rel="stylesheet" href="vendor/fonts/fonts.css">
+  <link rel="stylesheet" href="vendor/rsg-shared/theme.css">
   <link rel="stylesheet" href="css/style.css">
-  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+  <script src="vendor/qrcode-generator/qrcode-1.4.4.js"></script>
   <script type="module" src="js/main.js"></script>
 </head>
 <body>
+  <nav class="rsg-portal-link" id="portal-link" aria-label="Weblehrerzimmer" hidden>
+    <a href="/"><span aria-hidden="true">←</span> Weblehrerzimmer</a>
+  </nav>
+  <p class="rsg-test-banner" id="test-banner" role="note" hidden>Testsystem – nur Fantasiedaten eintragen, keine echten Schülerdaten.</p>
   <div id="libfail" class="libfail" hidden>
-    Die Spielbibliothek konnte nicht geladen werden. Bitte prüfe die Internetverbindung
+    Die Spielbibliothek (PeerJS) konnte nicht geladen werden. Bitte prüfe die Internetverbindung
     (oder ob ein Inhaltsfilter <code>unpkg.com</code> blockiert) und lade die Seite neu.
   </div>
+
+  <!-- ================= Anmeldung nötig (nur Weblehrerzimmer) ================= -->
+  <section id="view-login" class="view login" hidden>
+    <div class="panel">
+      <h1 class="logo small">Mathe<span>bingo</span></h1>
+      <h2>Bitte zuerst im Weblehrerzimmer anmelden</h2>
+      <p class="muted">Ein Spiel leiten können nur angemeldete Lehrkräfte. Nach der Anmeldung Mathebingo über die Kachel im Weblehrerzimmer öffnen.</p>
+      <a class="btn primary" href="/login">Zur Anmeldung</a>
+      <p class="small muted">Mitspielen geht ohne Anmeldung: <a href="#join">Raumcode eingeben</a></p>
+    </div>
+  </section>
 
   <!-- ================= Startseite ================= -->
   <section id="view-home" class="view home" hidden>
@@ -69,13 +86,15 @@
     <main class="host">
       <section id="h-lobby" hidden>
         <div class="lobby-grid">
-          <div class="panel joinbox">
+          <div class="panel joinbox" id="h-joinbox">
             <p class="eyebrow">Mitspielen auf</p>
             <p class="url" id="h-url"></p>
             <div id="h-qr" class="qr" aria-label="QR-Code zum Beitreten"></div>
             <p class="eyebrow">Raumcode</p>
             <p class="code" id="h-code"></p>
             <button id="h-copy" class="btn ghost small" type="button">Link kopieren</button>
+            <label class="check center"><input type="checkbox" class="h-lock"> Raum für neue Beitritte sperren</label>
+            <p class="small muted lockhint">Gesperrt: Wer schon drin ist, kommt nach einer Unterbrechung weiter zurück.</p>
             <p class="small muted nethint">Schüler kommen nicht rein? <a href="#test" target="_blank" rel="noopener">Verbindungstest</a> auf einem Schülergerät öffnen.</p>
           </div>
           <div class="panel">
@@ -141,9 +160,10 @@
             <div class="panel">
               <h2>Spieler <span class="count" id="h-pcount2"></span></h2>
               <ul id="h-players-game" class="plist"></ul>
+              <label class="check"><input type="checkbox" class="h-lock"> Neue Beitritte sperren</label>
             </div>
             <details class="panel">
-              <summary>Kontrollraster 1–100 (nur für dich)</summary>
+              <summary>Kontrollraster (nur für dich)</summary>
               <div id="h-board" class="board"></div>
             </details>
           </aside>
@@ -185,7 +205,8 @@
           </div>
           <div class="field">
             <label for="p-nickname">Dein Spitzname</label>
-            <input id="p-nickname" maxlength="20" autocomplete="nickname" placeholder="z. B. Rechenkönig">
+            <input id="p-nickname" maxlength="20" autocomplete="off" placeholder="z. B. Rechenkönig">
+            <p class="small muted privacy">Kein echter Name nötig, ein Spitzname reicht.</p>
           </div>
           <button class="btn primary big" type="submit" id="p-joinbtn">Beitreten</button>
           <p id="p-joinmsg" class="msg" aria-live="polite"></p>
@@ -257,7 +278,7 @@
         <button id="t-copy" class="btn primary" type="button">Ergebnis kopieren</button>
       </div>
       <textarea id="t-report" class="report" rows="10" readonly hidden></textarea>
-      <details class="panel">
+      <details class="panel" id="t-turn">
         <summary>Eigenen TURN-Server testen (für Fortgeschrittene)</summary>
         <div class="field"><label for="t-turn-url">TURN-Adresse</label><input id="t-turn-url" placeholder="turns:beispiel.metered.live:443?transport=tcp" autocomplete="off" spellcheck="false"></div>
         <div class="field"><label for="t-turn-user">Benutzername</label><input id="t-turn-user" autocomplete="off" spellcheck="false"></div>

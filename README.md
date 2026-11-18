@@ -47,32 +47,73 @@ Zuerst wird zufällig ein Ergebnis gewählt, das in dieser Runde noch nicht vork
 
 ## Technik
 
-- Rein statische Seite: HTML, CSS und JavaScript-Module, kein Build-Schritt.
-- Die Geräte verbinden sich direkt über WebRTC mit [PeerJS](https://peerjs.com). Der öffentliche PeerJS-Server vermittelt nur den Verbindungsaufbau, ein Konto ist nicht nötig. Das Gerät des Spielleiters ist der „Server“ und muss während des Spiels **geöffnet bleiben**.
-- Lädt ein Spieler die Seite neu oder verliert kurz die Verbindung, kommt er automatisch mit Karte und Markierungen zurück. Dasselbe gilt für den Spielleiter: Das Spiel wird pausiert fortgesetzt.
+Mathebingo läuft in zwei Varianten. Die Spiellogik ist dieselbe, nur die Netzwerkschicht (`js/net.js`) unterscheidet sich:
+
+| | Schulserver (Weblehrerzimmer) | GitHub Pages |
+|---|---|---|
+| Adresse | `https://webapps.das-rsg.de/mathebingo/` | `https://lehrer-lfb.github.io/Mathebingo/` |
+| Verbindung | WebSocket über den eigenen Server (HTTPS, Port 443) | PeerJS/WebRTC direkt zwischen den Geräten |
+| Spiel leiten | nur angemeldete Lehrkräfte (Login des Weblehrerzimmers) | alle |
+| Schul-WLAN | funktioniert auch mit Client-Isolation | scheitert oft (siehe Verbindungstest `#test`) |
+
+Die App erkennt die Variante selbst: Antwortet `./api/me`, läuft ein Relay-Server, sonst wird PeerJS von unpkg.com nachgeladen.
+
+- Statische Seite (HTML, CSS, JavaScript-Module) ohne Build-Schritt. Alle Fremddateien liegen in `vendor/` (keine CDNs, siehe `vendor/README.md`).
+- Der Spielzustand liegt beim Gerät der Lehrkraft, das **geöffnet bleiben** muss. Der Server leitet nur weiter.
+- Unterbrechungen (Display-Sperre am iPad, Neuladen) werden abgefangen: Mit dem Wiederverbindungs-Token in `sessionStorage` kommt man mit Platz und Karte zurück, die Lehrkraft mit ihrem Raum. Beides geht innerhalb von 10 Minuten.
 - Wer erst während der Runde seine Karte abgibt, für den zählen nur die Kugeln ab diesem Moment.
+- Doppelte Spitznamen bekommen eine Ziffer angehängt. Die Lehrkraft kann Spieler:innen entfernen und den Raum für neue Beitritte sperren.
 
 | Datei | Inhalt |
 |---|---|
-| `index.html`, `css/style.css` | Oberfläche |
+| `index.html`, `css/style.css` | Oberfläche (RSG-Design aus `vendor/rsg-shared/`) |
 | `js/game.js` | Spiellogik (Aufgaben, Kartenprüfung, Bingo-Prüfung) |
 | `js/host.js` / `js/player.js` | Spielleiter- und Spieleransicht |
-| `js/net.js` | Verbindungsaufbau über PeerJS |
-| `test/game.test.mjs` | Tests der Spiellogik (`npm test`, benötigt Node ≥ 20) |
+| `js/net.js` | Transport-Schnittstelle: Relay (WebSocket) oder PeerJS |
+| `server/` | Node-Dienst: liefert die Seite unter `BASE_PATH` aus, WebSocket-Relay, Login-Prüfung |
+| `test/` | Unit-Tests: Spiellogik, Login, Relay (`npm test`) |
+| `e2e/` | Playwright-Tests in iPad-Profilen (`npm run e2e`) |
 
-### Lokal ausprobieren
+### Server (Typ B im Weblehrerzimmer)
+
+Ein kleiner Node-Dienst, einzige Abhängigkeiten sind `ws` und `@auth/core`. Er liefert unter `BASE_PATH` (Standard `/mathebingo`) aus:
+
+| Pfad | Zweck |
+|---|---|
+| `/mathebingo/` | die App (nur `index.html`, `css/`, `js/`, `vendor/`) |
+| `/mathebingo/ws` | WebSocket-Relay; `?role=host` nur mit Lehrkraft-Login |
+| `/mathebingo/api/me` | `{ relay, name, isTeacher, testSystem }` |
+| `/mathebingo/health` | Healthcheck, antwortet `ok` |
+
+Konfiguration nur über Umgebungsvariablen, siehe `.env.example`: `PORT`, `BASE_PATH`, `AUTH_SECRET`, `ALLOWED_ORIGINS` und `TESTSYSTEM`.
+
+Grenzen, alle in `server/relay.mjs`:
+- höchstens 50 Räume, je Raum 40 Spieler:innen
+- Nachrichten: 4 KB und 20 pro Sekunde je Spieler:in
+- Raumcodes: höchstens 5 falsche pro Verbindung, 120 Fehlversuche pro Minute und IP
+- Räume werden nach 3 h ohne Aktivität bzw. spätestens 8 h nach dem Eröffnen aufgeräumt
+
+Alle Daten liegen nur im Arbeitsspeicher. Logs enthalten keine Spitznamen, Inhalte oder IP-Adressen.
+
 ```bash
-python3 -m http.server 8000
-# Spielleiter: http://localhost:8000/#host
-# Spieler (anderes Fenster/Gerät im selben Netz): http://<IP-des-Rechners>:8000/#join
+npm ci
+AUTH_SECRET=… ALLOWED_ORIGINS=http://localhost:3005 npm start   # http://localhost:3005/mathebingo/
+npm test                      # Unit-Tests
+npx playwright install webkit && npm run e2e
 ```
 
-### Auf GitHub Pages veröffentlichen
-1. Repository auf GitHub anlegen und den Code hochladen (Branch `main`).
-2. Unter **Settings → Pages** als Quelle „Deploy from a branch“, Branch `main`, Ordner `/ (root)` wählen.
-3. Nach etwa einer Minute läuft das Spiel unter `https://<benutzername>.github.io/<repo>/`.
+Docker-Probelauf (Image `run`-Stufe, Port 3000, User `node`):
+```bash
+docker build -t mathebingo .
+docker run --rm -p 3005:3000 -e AUTH_SECRET=… -e ALLOWED_ORIGINS=http://localhost:3005 -e TESTSYSTEM=true mathebingo
+E2E_EXTERNAL=1 npm run e2e    # Playwright gegen den laufenden Container
+```
+Integration und Deployment übernimmt der Supervisor im Portal-Repo `das-rsg/weblehrerzimmer`.
 
-**Hinweis für Schulnetze:** WebRTC wird von manchen Firewalls eingeschränkt. Kommt keine Verbindung zustande, hilft oft ein anderes Netz, zum Beispiel ein Hotspot. Bleibt das Problem, ließe sich die Verbindung auf einen Dienst wie Firebase umstellen.
+### GitHub Pages
+Unter **Settings → Pages** als Quelle Branch `main` und Ordner `/ (root)` wählen. Ohne eigenen Server spielt die App über PeerJS. Für einen kurzen Test reicht `python3 -m http.server 8000`, dann `http://localhost:8000/#host` öffnen.
+
+**Hinweis für Schulnetze:** WebRTC scheitert oft an Client-Isolation im WLAN, und die öffentlichen PeerJS-Weiterleitungsserver gibt es nicht mehr. Im Schulnetz deshalb die Variante über den Schulserver verwenden.
 
 ## Desktop-Version (alt)
 
@@ -91,5 +132,4 @@ Der vollständige Lizenztext steht in [`LICENSE`](LICENSE).
 - 📝 **Bedingungen:** Den Urheber und die Lizenz nennen. Veränderte Versionen müssen unter derselben Lizenz weitergegeben werden.
 - 🚫 **Nicht erlaubt:** jede kommerzielle Nutzung, zum Beispiel Verkauf, Einbau in kostenpflichtige Produkte oder Plattformen oder Nutzung durch gewinnorientierte Anbieter. Wer das möchte, braucht eine gesonderte Erlaubnis des Urhebers.
 
-Eingebundene Bibliotheken von Drittanbietern behalten ihre eigenen Lizenzen. Sie werden zur Laufzeit von einem CDN geladen:
-[PeerJS](https://github.com/peers/peerjs) (MIT) und [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) (MIT).
+Eingebundene Bibliotheken von Drittanbietern behalten ihre eigenen Lizenzen: [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) (MIT) sowie die Schriften Lato und Josefin Sans (SIL OFL 1.1) liegen in `vendor/`. [PeerJS](https://github.com/peers/peerjs) (MIT) lädt nur die GitHub-Pages-Variante von unpkg.com nach. Für den Server gilt: [ws](https://github.com/websockets/ws) (MIT), [@auth/core](https://github.com/nextauthjs/next-auth) (ISC).
