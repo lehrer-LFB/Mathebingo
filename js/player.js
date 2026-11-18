@@ -29,6 +29,7 @@ export function startPlayer(roomFromHash) {
   $('#p-room').value = P.room || '';
   $('#p-nickname').value = P.nick || '';
   render();
+  $('#p-joinbtn').disabled = false; // erst jetzt bereit (vorher würde das Formular die Seite neu laden)
   if (P.room && P.nick && P.autoJoin) connect();
   else (P.room ? $('#p-nickname') : $('#p-room')).focus();
   setInterval(tick, 200);

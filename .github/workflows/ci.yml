@@ -14,8 +14,8 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - name: Syntaxprüfung
-        run: for f in server/*.mjs js/*.js test/*.mjs e2e/*.mjs; do node --check "$f"; done
+      - name: ESLint
+        run: npx eslint .
       - name: Unit-Tests (Spiellogik, Login, Relay)
         run: npm test
       - name: WebKit für Playwright
