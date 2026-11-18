@@ -56,11 +56,15 @@ export class PlayerNet {
     this.conn = null;
     this.timer = null;
     this.destroyed = false;
+    this.fails = 0; // fehlgeschlagene Verbindungsversuche in Folge (Host da, aber kein Durchkommen)
+    this.noHost = false;
     const peer = (this.peer = new Peer(PEER_OPTS));
-    peer.on('open', () => this.connect());
+    // Vermittlungsserver nach 10 s nicht erreicht → eigener Hinweis
+    this.signalTimer = setTimeout(() => { if (!peer.open && !this.destroyed) this.h.status('no-signal'); }, 10000);
+    peer.on('open', () => { clearTimeout(this.signalTimer); this.connect(); });
     peer.on('disconnected', () => this.retry());
     peer.on('error', (err) => {
-      if (err.type === 'peer-unavailable') this.h.status('no-host');
+      if (err.type === 'peer-unavailable') { this.noHost = true; this.h.status('no-host'); }
       else if (err.type === 'browser-incompatible') { this.h.status('incompatible'); return; }
       else this.h.status('offline');
       this.retry();
@@ -75,13 +79,30 @@ export class PlayerNet {
   connect() {
     if (this.destroyed || this.isOpen()) return;
     if (this.conn) { const old = this.conn; this.conn = null; try { old.close(); } catch { /* egal */ } }
-    this.h.status('connecting');
+    this.noHost = false;
+    this.h.status(this.fails >= 2 ? 'blocked' : 'connecting');
     const c = (this.conn = this.peer.connect(this.hostId, { reliable: true }));
-    const guard = setTimeout(() => { if (this.conn === c && !c.open) this.retry(0); }, 8000);
-    c.on('open', () => { if (this.conn !== c) return; clearTimeout(guard); this.h.status('online'); this.h.open(); });
+    // Host gefunden, aber die direkte Verbindung kommt nicht zustande → typisch für blockierende Firewalls
+    const fail = (delay) => {
+      if (this.conn !== c || c.failed) return;
+      c.failed = true;
+      clearTimeout(guard);
+      if (!c.wasOpen && !this.noHost) this.fails++;
+      this.h.status(this.noHost ? 'no-host' : this.fails >= 2 ? 'blocked' : 'offline');
+      this.retry(delay);
+    };
+    const guard = setTimeout(() => { if (!c.open) fail(0); }, 8000);
+    c.on('open', () => {
+      if (this.conn !== c) return;
+      clearTimeout(guard);
+      c.wasOpen = true;
+      this.fails = 0;
+      this.h.status('online');
+      this.h.open();
+    });
     c.on('data', (d) => { if (this.conn === c) this.h.data(d); });
-    c.on('close', () => { if (this.conn !== c) return; this.h.status('offline'); this.retry(); });
-    c.on('error', () => { if (this.conn === c) this.retry(); });
+    c.on('close', () => fail());
+    c.on('error', () => fail());
   }
 
   retry(delay = 2500) {
@@ -99,5 +120,5 @@ export class PlayerNet {
     try { this.conn.send(msg); return true; } catch { return false; }
   }
 
-  destroy() { this.destroyed = true; clearTimeout(this.timer); try { this.peer.destroy(); } catch { /* egal */ } }
+  destroy() { this.destroyed = true; clearTimeout(this.timer); clearTimeout(this.signalTimer); try { this.peer.destroy(); } catch { /* egal */ } }
 }

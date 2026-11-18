@@ -50,16 +50,40 @@ function status(s) {
   const map = {
     online: ['online', 'verbunden'], connecting: ['warn', 'verbinde …'], offline: ['bad', 'keine Verbindung – neuer Versuch …'],
     'no-host': ['bad', 'Raum nicht erreichbar'], incompatible: ['bad', 'Browser ohne WebRTC'],
+    blocked: ['bad', 'Verbindung blockiert?'], 'no-signal': ['bad', 'Server nicht erreichbar'],
   };
   const [cls, text] = map[s] || ['warn', s];
   const st = $('#p-status');
   st.className = `status ${cls}`;
   st.textContent = text;
+  renderNetWarning(s);
+  if (!G.joined && (s === 'blocked' || s === 'no-signal')) $('#p-joinbtn').disabled = false;
   if (!G.joined && s === 'no-host') {
     setJoinMsg(`Raum ${P.room} wurde nicht gefunden. Stimmt der Code und ist das Spiel beim Spielleiter geöffnet? Neuer Versuch läuft …`, 'bad');
     $('#p-joinbtn').disabled = false;
   }
   renderEditorState();
+}
+
+/** Deutlicher Hinweis, wenn das Netzwerk die Verbindung vermutlich blockiert. */
+function renderNetWarning(s) {
+  const box = $('#p-netwarn');
+  if (s === 'online' || s === 'connecting' || s === 'no-host') { box.hidden = true; return; }
+  const texts = {
+    blocked: ['Die Verbindung zum Spielleiter kommt nicht zustande.',
+      'Der Raum wurde gefunden, aber das Netzwerk (z. B. das Schul-WLAN) blockiert vermutlich die direkte Verbindung zwischen den Geräten.'],
+    'no-signal': ['Der Vermittlungsserver ist nicht erreichbar.',
+      'Das Netzwerk sperrt vermutlich den Server 0.peerjs.com, oder das Gerät ist offline.'],
+  };
+  if (!texts[s]) return;
+  const [title, body] = texts[s];
+  box.replaceChildren(
+    el('strong', { text: title }),
+    el('p', { text: body }),
+    el('p', { text: 'Das kann helfen: mobile Daten oder einen Hotspot nutzen – oder den Verbindungstest öffnen und das Ergebnis der Lehrkraft zeigen. Das Spiel versucht es weiter automatisch.' }),
+    el('a', { class: 'btn small', href: '#test', text: 'Verbindungstest öffnen' }),
+  );
+  box.hidden = false;
 }
 
 function onMsg(m) {

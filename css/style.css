@@ -274,3 +274,21 @@ details.panel[open] > summary { margin-bottom: .6rem; }
 .check { display: flex; gap: .5rem; align-items: center; font-weight: 600; margin: 2px 0 8px; cursor: pointer; }
 .check input { width: 1.1rem; height: 1.1rem; accent-color: var(--accent); }
 #h-rules-info { margin: 4px 0 8px; }
+
+/* ---------- Netzwerk-Hinweise und Verbindungstest ---------- */
+.netwarn { background: var(--bad-bg); color: var(--text); border: 1px solid var(--bad); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 12px; }
+.netwarn strong { color: var(--bad); }
+.netwarn p { margin: .35rem 0; font-size: .92rem; }
+.netwarn .btn { display: inline-block; text-decoration: none; margin-top: 4px; }
+.nethint { margin: 10px 0 0; }
+.tlist { list-style: none; padding: 0; margin: 12px 0; display: grid; gap: 8px; }
+.tlist li { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); }
+.tlist li.ok { border-color: var(--good); }
+.tlist li.bad { border-color: var(--bad); background: var(--bad-bg); }
+.tlist .ic { font-size: 1.2rem; line-height: 1.3; }
+.verdict.ok { border-color: var(--good); background: var(--good-bg); }
+.verdict.warn { border-color: var(--warn); background: var(--warn-bg); }
+.verdict.bad { border-color: var(--bad); background: var(--bad-bg); }
+.verdict p { margin: .4rem 0 0; }
+.nettest .row { margin: 12px 0; }
+.report { width: 100%; font: .8rem/1.4 ui-monospace, monospace; background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 8px; }

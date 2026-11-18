@@ -50,7 +50,8 @@
         © Daniel von Laufenberg · Frei für Schulen und Bildungseinrichtungen ·
         <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/deed.de" rel="license">CC BY-NC-SA 4.0</a> –
         keine kommerzielle Nutzung ·
-        <a href="https://github.com/lehrer-LFB/Mathebingo">Quellcode</a>
+        <a href="https://github.com/lehrer-LFB/Mathebingo">Quellcode</a> ·
+        <a href="#test">Verbindungstest</a>
       </p>
     </div>
   </section>
@@ -75,6 +76,7 @@
             <p class="eyebrow">Raumcode</p>
             <p class="code" id="h-code"></p>
             <button id="h-copy" class="btn ghost small" type="button">Link kopieren</button>
+            <p class="small muted nethint">Schüler kommen nicht rein? <a href="#test" target="_blank" rel="noopener">Verbindungstest</a> auf einem Schülergerät öffnen.</p>
           </div>
           <div class="panel">
             <h2>Spieler <span class="count" id="h-pcount">0</span></h2>
@@ -173,6 +175,7 @@
       <div class="topinfo"><span id="p-who"></span> <span id="p-status" class="status"></span></div>
     </header>
     <main class="player">
+      <div id="p-netwarn" class="netwarn" role="alert" hidden></div>
       <section id="p-join" class="panel narrow">
         <h1>Spiel beitreten</h1>
         <form id="p-joinform" novalidate>
@@ -235,6 +238,33 @@
         </div>
         <p class="muted">Warte, bis der Spielleiter eine neue Runde startet.</p>
       </section>
+    </main>
+  </section>
+
+  <!-- ================= Verbindungstest ================= -->
+  <section id="view-test" class="view" hidden>
+    <header class="topbar">
+      <a class="logo small" href="./">Mathe<span>bingo</span></a>
+      <div class="topinfo">Verbindungstest</div>
+    </header>
+    <main class="player nettest">
+      <h1>Klappt Mathebingo in diesem Netzwerk?</h1>
+      <p class="muted">Öffne diese Seite auf einem Schülergerät im Schul-WLAN – und zum Vergleich auf dem Gerät des Spielleiters. Der Test dauert etwa 10 Sekunden.</p>
+      <ul id="t-list" class="tlist"></ul>
+      <div id="t-verdict" class="panel verdict" hidden></div>
+      <div class="row">
+        <button id="t-run" class="btn" type="button">Test wiederholen</button>
+        <button id="t-copy" class="btn primary" type="button">Ergebnis kopieren</button>
+      </div>
+      <textarea id="t-report" class="report" rows="10" readonly hidden></textarea>
+      <details class="panel">
+        <summary>Eigenen TURN-Server testen (für Fortgeschrittene)</summary>
+        <div class="field"><label for="t-turn-url">TURN-Adresse</label><input id="t-turn-url" placeholder="turns:beispiel.metered.live:443?transport=tcp" autocomplete="off" spellcheck="false"></div>
+        <div class="field"><label for="t-turn-user">Benutzername</label><input id="t-turn-user" autocomplete="off" spellcheck="false"></div>
+        <div class="field"><label for="t-turn-pass">Passwort</label><input id="t-turn-pass" autocomplete="off" spellcheck="false"></div>
+        <button id="t-turn-run" class="btn" type="button">TURN-Server testen</button>
+        <p id="t-turn-result" class="msg"></p>
+      </details>
     </main>
   </section>
 
