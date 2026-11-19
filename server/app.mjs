@@ -105,12 +105,15 @@ export function createApp(config, { limits = {}, log = (msg) => console.log(`[ma
     if (url.pathname !== `${cfg.basePath}/ws`) return reject(socket, 404, 'Not Found');
     const origin = String(req.headers.origin || '').replace(/\/+$/, '');
     if (!origin || !cfg.allowedOrigins.includes(origin)) return reject(socket, 403, 'Forbidden');
+    const ip = clientIp(req);
+    if (!relay.canAccept(ip)) return reject(socket, 503, 'Service Unavailable');
     const role = url.searchParams.get('role') === 'host' ? 'host' : 'player';
     if (role === 'host') {
       const s = await sessionFromCookie(req.headers.cookie, cfg.secret);
       if (!s?.isTeacher) return reject(socket, 401, 'Unauthorized');
     }
-    const ip = clientIp(req);
+    // nach dem await erneut prüfen, falls inzwischen andere Verbindungen dazugekommen sind
+    if (!relay.canAccept(ip)) return reject(socket, 503, 'Service Unavailable');
     wss.handleUpgrade(req, socket, head, (ws) => relay.attach(ws, { role, ip }));
   }
 

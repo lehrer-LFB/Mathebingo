@@ -20,6 +20,8 @@ export const LIMITS = Object.freeze({
   idleMs: 3 * 3600_000, // Raum ohne Aktivität
   maxAgeMs: 8 * 3600_000, // Raum spätestens nach dem Eröffnen
   helloMs: 15_000, // Zeit bis zur ersten open/join-Nachricht
+  maxConnections: 2000, // gleichzeitig offene WebSocket-Verbindungen insgesamt
+  maxConnectionsPerIp: 400, // pro IP großzügig wegen Schul-NAT (50 Räume × 40 iPads hinter einer Adresse wären 2000)
   pingMs: 25_000, // Ping/Pong hält Verbindungen lebendig und erkennt tote
   sweepMs: 30_000,
 });
@@ -37,6 +39,7 @@ export class Relay {
     this.rooms = new Map(); // code -> room
     this.fails = new Map(); // ip -> { n, since, until } (nur flüchtig für das Rate-Limit)
     this.clients = new Set();
+    this.ipConns = new Map(); // ip -> Zahl offener Verbindungen (nur flüchtig für die Obergrenze)
     this.sweeper = setInterval(() => this.sweep(), this.L.sweepMs);
     this.pinger = setInterval(() => this.pingAll(), this.L.pingMs);
     this.sweeper.unref?.();
@@ -45,9 +48,15 @@ export class Relay {
 
   // ---------- Verbindungen ----------
 
+  /** Vor dem Upgrade prüfen: Ist noch Platz für eine weitere Verbindung (insgesamt und von dieser IP)? */
+  canAccept(ip) {
+    return this.clients.size < this.L.maxConnections && (this.ipConns.get(ip) || 0) < this.L.maxConnectionsPerIp;
+  }
+
   attach(ws, { role, ip }) {
     const c = { ws, role, ip, alive: true, room: null, pid: null, win: Date.now(), count: 0, fails: 0 };
     this.clients.add(c);
+    this.ipConns.set(ip, (this.ipConns.get(ip) || 0) + 1);
     c.hello = setTimeout(() => { if (!c.room) this.closeClient(c, 4408, 'timeout'); }, this.L.helloMs);
     ws.on('pong', () => { c.alive = true; });
     ws.on('message', (raw, isBinary) => this.onMessage(c, raw, isBinary));
@@ -94,7 +103,9 @@ export class Relay {
 
   onClose(c) {
     clearTimeout(c.hello);
-    this.clients.delete(c);
+    if (!this.clients.delete(c)) return;
+    const n = (this.ipConns.get(c.ip) || 1) - 1;
+    if (n > 0) this.ipConns.set(c.ip, n); else this.ipConns.delete(c.ip);
     const room = c.room;
     if (!room) return;
     c.room = null;

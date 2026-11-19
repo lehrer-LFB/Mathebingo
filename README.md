@@ -91,6 +91,7 @@ Grenzen, alle in `server/relay.mjs`:
 - höchstens 50 Räume, je Raum 40 Spieler:innen
 - Nachrichten: 4 KB und 20 pro Sekunde je Spieler:in
 - Raumcodes: höchstens 5 falsche pro Verbindung, 120 Fehlversuche pro Minute und IP
+- Verbindungen: höchstens 2000 gleichzeitig, davon 400 pro IP (Schul-NAT), darüber hinaus 503
 - Räume werden nach 3 h ohne Aktivität bzw. spätestens 8 h nach dem Eröffnen aufgeräumt
 
 Alle Daten liegen nur im Arbeitsspeicher. Logs enthalten keine Spitznamen, Inhalte oder IP-Adressen.

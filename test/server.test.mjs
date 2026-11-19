@@ -287,3 +287,34 @@ test('WS: Neustart – alle Clients bekommen shutdown', async () => {
   assert.deepEqual(await got, { op: 'shutdown' });
   assert.equal(await code, 1012);
 });
+
+test('WS: Obergrenze für offene Verbindungen – insgesamt und pro IP (503)', async () => {
+  const lim = createApp({ basePath: '/mathebingo', secret: SECRET, allowedOrigins: [], testSystem: false },
+    { limits: { maxConnections: 4, maxConnectionsPerIp: 2 }, log: () => {} });
+  await new Promise((r) => lim.server.listen(0, '127.0.0.1', r));
+  const o = `http://127.0.0.1:${lim.server.address().port}`;
+  lim.config.allowedOrigins = [o];
+  const connect = (ip) => new Promise((resolve) => {
+    const ws = new WebSocket(`${o.replace('http', 'ws')}/mathebingo/ws`, { headers: { Origin: o, 'X-Forwarded-For': ip } });
+    ws.once('open', () => resolve({ ws, status: 101 }));
+    ws.once('unexpected-response', (_q, r) => resolve({ ws, status: r.statusCode }));
+    ws.once('error', () => {});
+  });
+  const a1 = await connect('10.0.0.1');
+  const a2 = await connect('10.0.0.1');
+  assert.equal((await connect('10.0.0.1')).status, 503, 'dritte Verbindung derselben IP');
+  const b1 = await connect('10.0.0.2');
+  const c1 = await connect('10.0.0.3');
+  assert.deepEqual([a1, a2, b1, c1].map((x) => x.status), [101, 101, 101, 101]);
+  assert.equal(lim.relay.clients.size, 4);
+  assert.equal((await connect('10.0.0.4')).status, 503, 'Gesamtgrenze erreicht');
+  // nach dem Schließen ist wieder Platz, auch für die erste IP
+  const gone = new Promise((r) => a1.ws.once('close', r));
+  a1.ws.close();
+  await gone;
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(lim.relay.ipConns.get('10.0.0.1'), 1);
+  const again = await connect('10.0.0.1');
+  assert.equal(again.status, 101);
+  await lim.close();
+});
